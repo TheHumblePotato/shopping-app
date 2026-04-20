@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pantry — Smart Shopping List</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAF6EF;
+    --warm-white: #FFF9F2;
+    --tan: #E8DCC8;
+    --brown: #8B6F47;
+    --dark-brown: #3D2B1F;
+    --green: #4A7C59;
+    --green-light: #E8F2EC;
+    --red: #C0392B;
+    --red-light: #FAEAEA;
+    --amber: #D4860A;
+    --amber-light: #FDF3E3;
+    --shadow: 0 2px 12px rgba(61,43,31,0.08);
+    --shadow-lg: 0 8px 32px rgba(61,43,31,0.14);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--dark-brown);
+    min-height: 100vh;
+  }
+
+  /* ---- NAV ---- */
+  .nav {
+    background: var(--warm-white);
+    border-bottom: 1.5px solid var(--tan);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--dark-brown);
+    letter-spacing: -0.5px;
+  }
+  .nav-logo span { color: var(--green); }
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--tan);
+    border-radius: 30px;
+    padding: 4px;
+  }
+  .nav-tab {
+    padding: 7px 20px;
+    border-radius: 26px;
+    border: none;
+    background: transparent;
+    color: var(--brown);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .nav-tab.active {
+    background: var(--dark-brown);
+    color: var(--cream);
+  }
+  .nav-tab:hover:not(.active) { background: rgba(61,43,31,0.1); }
+
+  /* ---- MAIN ---- */
+  .main { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  /* ---- SECTION HEADERS ---- */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--dark-brown);
+  }
+  .section-subtitle { font-size: 0.85rem; color: var(--brown); margin-top: 2px; }
+
+  /* ---- BUTTONS ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 30px;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .btn-primary { background: var(--dark-brown); color: var(--cream); }
+  .btn-primary:hover { background: #2a1e15; transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover { background: #3a6147; transform: translateY(-1px); }
+  .btn-outline {
+    background: transparent;
+    color: var(--dark-brown);
+    border: 1.5px solid var(--tan);
+  }
+  .btn-outline:hover { background: var(--tan); }
+  .btn-sm { padding: 5px 13px; font-size: 0.8rem; }
+  .btn-danger { background: var(--red-light); color: var(--red); }
+  .btn-danger:hover { background: #f5d0cd; }
+
+  /* ---- TABS CONTENT ---- */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ---- RECEIPT SCANNER ---- */
+  .scan-zone {
+    border: 2.5px dashed var(--tan);
+    border-radius: var(--radius);
+    padding: 40px 24px;
+    text-align: center;
+    background: var(--warm-white);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .scan-zone:hover, .scan-zone.drag-over {
+    border-color: var(--brown);
+    background: #f5ede0;
+  }
+  .scan-icon { font-size: 2.8rem; margin-bottom: 12px; }
+  .scan-zone h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
+  .scan-zone p { font-size: 0.85rem; color: var(--brown); }
+  #receipt-file { display: none; }
+
+  .scan-preview-wrap { margin-top: 20px; display: none; }
+  .scan-preview-wrap img {
+    max-height: 280px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--tan);
+    max-width: 100%;
+  }
+
+  .receipt-items-review {
+    background: var(--warm-white);
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 20px;
+    display: none;
+  }
+  .receipt-items-review h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+    color: var(--dark-brown);
+  }
+  .review-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--tan);
+  }
+  .review-item:last-of-type { border-bottom: none; }
+  .review-item input[type="text"] {
+    flex: 1;
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    background: var(--cream);
+    color: var(--dark-brown);
+  }
+  .review-item input[type="number"] {
+    width: 70px;
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    background: var(--cream);
+    color: var(--dark-brown);
+  }
+  .review-item .unit-label { font-size: 0.8rem; color: var(--brown); min-width: 30px; }
+  .review-item .match-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .match-existing { background: var(--green-light); color: var(--green); }
+  .match-new { background: var(--amber-light); color: var(--amber); }
+  .review-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--brown);
+    font-size: 1rem;
+    padding: 2px 5px;
+    border-radius: 5px;
+    transition: color 0.15s;
+  }
+  .review-remove:hover { color: var(--red); }
+
+  .status-bar {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    display: none;
+  }
+  .status-bar.info { background: var(--amber-light); color: var(--amber); }
+  .status-bar.success { background: var(--green-light); color: var(--green); }
+  .status-bar.error { background: var(--red-light); color: var(--red); }
+
+  /* ---- INVENTORY ---- */
+  .inventory-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .search-bar {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+  }
+  .search-bar input {
+    width: 100%;
+    border: 1.5px solid var(--tan);
+    border-radius: 30px;
+    padding: 9px 16px 9px 38px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    background: var(--warm-white);
+    color: var(--dark-brown);
+    outline: none;
+    transition: border 0.18s;
+  }
+  .search-bar input:focus { border-color: var(--brown); }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--brown);
+    font-size: 1rem;
+    pointer-events: none;
+  }
+
+  .add-item-form {
+    background: var(--warm-white);
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    display: none;
+  }
+  .add-item-form.open { display: block; }
+  .add-item-form h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 14px; color: var(--dark-brown); }
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 0.78rem; font-weight: 500; color: var(--brown); text-transform: uppercase; letter-spacing: 0.5px; }
+  .form-group input, .form-group select {
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    background: var(--cream);
+    color: var(--dark-brown);
+    outline: none;
+    transition: border 0.18s;
+    min-width: 130px;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--brown); }
+
+  /* ---- CATEGORY GRID ---- */
+  .category-section { margin-bottom: 28px; }
+  .category-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .category-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--dark-brown);
+    flex: 1;
+  }
+  .category-count {
+    font-size: 0.78rem;
+    color: var(--brown);
+    background: var(--tan);
+    border-radius: 20px;
+    padding: 2px 9px;
+  }
+  .category-toggle { color: var(--brown); font-size: 0.85rem; transition: transform 0.2s; }
+  .category-section.collapsed .category-toggle { transform: rotate(-90deg); }
+
+  .items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .category-section.collapsed .items-grid { display: none; }
+
+  .item-card {
+    background: var(--warm-white);
+    border: 1.5px solid var(--tan);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    transition: all 0.18s;
+    position: relative;
+  }
+  .item-card:hover { box-shadow: var(--shadow); border-color: var(--brown); }
+  .item-card.low { border-color: #f0c07c; background: var(--amber-light); }
+  .item-card.out { border-color: #e8a8a4; background: var(--red-light); }
+  .item-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; color: var(--dark-brown); }
+  .item-qty-row { display: flex; align-items: center; gap: 6px; }
+  .qty-btn {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid var(--tan);
+    background: var(--cream);
+    color: var(--dark-brown);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .qty-btn:hover { background: var(--tan); }
+  .qty-display {
+    font-size: 1rem;
+    font-weight: 600;
+    min-width: 28px;
+    text-align: center;
+    color: var(--dark-brown);
+  }
+  .qty-unit { font-size: 0.75rem; color: var(--brown); }
+  .item-status-dot {
+    position: absolute;
+    top: 10px; right: 12px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .item-status-dot.good { background: var(--green); }
+  .item-status-dot.low { background: var(--amber); }
+  .item-status-dot.out { background: var(--red); }
+  .item-delete-btn {
+    position: absolute;
+    bottom: 8px; right: 10px;
+    background: none; border: none; cursor: pointer;
+    color: var(--tan); font-size: 0.85rem; padding: 2px;
+    transition: color 0.15s;
+  }
+  .item-delete-btn:hover { color: var(--red); }
+  .low-threshold-row {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .threshold-label { font-size: 0.7rem; color: var(--brown); }
+  .threshold-input {
+    width: 45px;
+    border: 1px solid var(--tan);
+    border-radius: 5px;
+    padding: 2px 5px;
+    font-size: 0.75rem;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--dark-brown);
+  }
+
+  /* ---- SHOPPING MODE ---- */
+  .shopping-mode { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .shop-banner {
+    background: var(--dark-brown);
+    color: var(--cream);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .shop-banner-icon { font-size: 2rem; }
+  .shop-banner h2 { font-family: 'Playfair Display', serif; font-size: 1.3rem; }
+  .shop-banner p { font-size: 0.85rem; opacity: 0.75; margin-top: 3px; }
+
+  .shop-section { margin-bottom: 28px; }
+  .shop-section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--brown);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid var(--tan);
+  }
+  .shop-section-title.urgent { color: var(--red); border-color: #e8a8a4; }
+  .shop-section-title.low-col { color: var(--amber); border-color: #f0c07c; }
+
+  .shop-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--tan);
+    transition: all 0.18s;
+  }
+  .shop-item:last-child { border-bottom: none; }
+  .shop-item.checked { opacity: 0.4; }
+  .shop-check {
+    width: 22px; height: 22px;
+    border: 2px solid var(--tan);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    background: var(--cream);
+    font-size: 0.8rem;
+    color: transparent;
+  }
+  .shop-check.checked { background: var(--green); border-color: var(--green); color: #fff; }
+  .shop-item-info { flex: 1; }
+  .shop-item-name { font-weight: 600; font-size: 0.9rem; }
+  .shop-item-detail { font-size: 0.78rem; color: var(--brown); margin-top: 1px; }
+  .shop-item-urgency {
+    font-size: 0.72rem;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .urgency-out { background: var(--red-light); color: var(--red); }
+  .urgency-low { background: var(--amber-light); color: var(--amber); }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--brown);
+  }
+  .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+  .empty-state h3 { font-family: 'Playfair Display', serif; font-size: 1.2rem; margin-bottom: 6px; color: var(--dark-brown); }
+  .empty-state p { font-size: 0.875rem; }
+
+  /* ---- PROCESSING OVERLAY ---- */
+  .processing-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(61,43,31,0.5);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+  }
+  .processing-overlay.show { display: flex; }
+  .processing-card {
+    background: var(--warm-white);
+    border-radius: var(--radius);
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+  }
+  .spinner {
+    width: 44px; height: 44px;
+    border: 3px solid var(--tan);
+    border-top-color: var(--dark-brown);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-card h3 { font-family: 'Playfair Display', serif; font-size: 1.1rem; margin-bottom: 5px; }
+  .processing-card p { font-size: 0.85rem; color: var(--brown); }
+
+  /* ---- MISC ---- */
+  .divider { height: 1.5px; background: var(--tan); margin: 24px 0; }
+  .review-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 600px) {
+    .nav-tabs .nav-tab { padding: 7px 13px; font-size: 0.8rem; }
+    .items-grid { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); }
+    .main { padding: 20px 14px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">Pan<span>try</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showTab('scan')">📷 Scan</button>
+    <button class="nav-tab" onclick="showTab('inventory')">🥫 Pantry</button>
+    <button class="nav-tab" onclick="showTab('shopping')">🛒 Shop</button>
+  </div>
+</nav>
+
+<!-- PROCESSING OVERLAY -->
+<div class="processing-overlay" id="processing-overlay">
+  <div class="processing-card">
+    <div class="spinner"></div>
+    <h3>Scanning Receipt</h3>
+    <p id="processing-msg">Extracting text with AI…</p>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ===== SCAN TAB ===== -->
+  <div class="tab-content active" id="tab-scan">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Scan a Receipt</div>
+        <div class="section-subtitle">Take a photo or upload an image — AI will parse the items</div>
+      </div>
+    </div>
+
+    <div class="scan-zone" id="scan-zone" onclick="document.getElementById('receipt-file').click()"
+         ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+      <div class="scan-icon">📄</div>
+      <h3>Drop receipt here or tap to upload</h3>
+      <p>Supports JPG, PNG, HEIC — or use your camera</p>
+      <input type="file" id="receipt-file" accept="image/*" capture="environment" onchange="handleFileSelect(event)">
+    </div>
+
+    <div class="scan-preview-wrap" id="scan-preview-wrap">
+      <img id="scan-preview-img" src="" alt="Receipt preview">
+    </div>
+
+    <div class="status-bar" id="scan-status"></div>
+
+    <div class="receipt-items-review" id="receipt-review">
+      <h3>Review Scanned Items</h3>
+      <p style="font-size:0.82rem;color:var(--brown);margin-bottom:14px;">Edit names, quantities, or remove items before adding to your pantry.</p>
+      <div id="review-items-list"></div>
+      <div class="review-actions">
+        <button class="btn btn-green" onclick="addReviewedItemsToPantry()">✓ Add to Pantry</button>
+        <button class="btn btn-outline" onclick="clearReview()">✕ Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== INVENTORY TAB ===== -->
+  <div class="tab-content" id="tab-inventory">
+    <div class="section-header">
+      <div>
+        <div class="section-title">My Pantry</div>
+        <div class="section-subtitle">Track what you have and how much</div>
+      </div>
+      <button class="btn btn-primary" onclick="toggleAddForm()">＋ Add Item</button>
+    </div>
+
+    <!-- Add Item Form -->
+    <div class="add-item-form" id="add-item-form">
+      <h4>Add New Item</h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Item Name</label>
+          <input type="text" id="new-item-name" placeholder="e.g. Almond Milk">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" id="new-item-category" placeholder="e.g. Dairy" list="category-datalist">
+          <datalist id="category-datalist"></datalist>
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" id="new-item-qty" value="1" min="0" step="0.5" style="min-width:80px">
+        </div>
+        <div class="form-group">
+          <label>Unit</label>
+          <input type="text" id="new-item-unit" placeholder="e.g. carton" style="min-width:90px">
+        </div>
+        <div class="form-group">
+          <label>Low at</label>
+          <input type="number" id="new-item-threshold" value="1" min="0" step="0.5" style="min-width:75px">
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <button class="btn btn-green" onclick="addManualItem()">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="inventory-controls">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="inventory-search" placeholder="Search pantry…" oninput="renderInventory()">
+      </div>
+    </div>
+
+    <!-- Inventory Grid -->
+    <div id="inventory-grid"></div>
+  </div>
+
+  <!-- ===== SHOPPING TAB ===== -->
+  <div class="tab-content" id="tab-shopping">
+    <div class="shop-banner">
+      <div class="shop-banner-icon">🛒</div>
+      <div>
+        <h2>Shopping Mode</h2>
+        <p>Items you need to restock, sorted by urgency</p>
+      </div>
+    </div>
+    <div id="shopping-list-content"></div>
+  </div>
+
+</div>
+
+<script>
+// =====================================================================
+// STATE
+// =====================================================================
+let pantry = JSON.parse(localStorage.getItem('pantry-v2') || '[]');
+// pantry item: { id, name, category, qty, unit, threshold, lowThreshold }
+
+let reviewItems = []; // temp items from receipt scan
+
+function savePantry() {
+  localStorage.setItem('pantry-v2', JSON.stringify(pantry));
+}
+
+// =====================================================================
+// TAB NAVIGATION
+// =====================================================================
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  const tabs = ['scan', 'inventory', 'shopping'];
+  document.querySelectorAll('.nav-tab')[tabs.indexOf(tab)].classList.add('active');
+  if (tab === 'inventory') renderInventory();
+  if (tab === 'shopping') renderShopping();
+}
+
+// =====================================================================
+// FILE HANDLING & SCANNING
+// =====================================================================
+function dragOver(e) {
+  e.preventDefault();
+  document.getElementById('scan-zone').classList.add('drag-over');
+}
+function dragLeave(e) {
+  document.getElementById('scan-zone').classList.remove('drag-over');
+}
+function dropFile(e) {
+  e.preventDefault();
+  document.getElementById('scan-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processReceiptFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processReceiptFile(file);
+  e.target.value = '';
+}
+
+async function processReceiptFile(file) {
+  // Show preview
+  const previewWrap = document.getElementById('scan-preview-wrap');
+  const previewImg = document.getElementById('scan-preview-img');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewImg.src = e.target.result;
+    previewWrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  showStatus('info', '🔍 Reading receipt with AI…');
+  showProcessing(true, 'Extracting text from receipt…');
+
+  try {
+    // Convert to base64
+    const base64 = await fileToBase64(file);
+    const mimeType = file.type || 'image/jpeg';
+
+    // Use Gemini Vision to extract & parse receipt
+    showProcessingMsg('Parsing items with AI…');
+    const items = await extractItemsFromReceipt(base64, mimeType);
+
+    showProcessing(false);
+    showStatus('success', `✓ Found ${items.length} item${items.length !== 1 ? 's' : ''} on receipt`);
+
+    // Match to existing pantry categories
+    const matched = matchItemsToPantry(items);
+    reviewItems = matched;
+    renderReview();
+  } catch (err) {
+    showProcessing(false);
+    showStatus('error', '✕ ' + (err.message || 'Failed to process receipt'));
+    console.error(err);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('File read failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function extractItemsFromReceipt(base64, mimeType) {
+  const GEMINI_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+
+  const existingCats = [...new Set(pantry.map(p => p.category))];
+
+  const prompt = `You are a receipt parser. Look at this receipt image and extract all food/grocery items purchased.
+
+Return ONLY a JSON array, no markdown, no explanation. Each element:
+{
+  "name": "item name (specific product name)",
+  "qty": number (quantity purchased, default 1 if unclear),
+  "unit": "unit of measure (e.g. box, can, lb, oz, carton, bag, bottle — leave empty string if just a count)"
+}
+
+Rules:
+- Only include food/grocery items, skip fees, taxes, totals, store info
+- Use clean, common names (e.g. "Orange Juice" not "TROP PURE PREM OJ FL")
+- Normalize qty to a reasonable number (e.g. if it says "2 @ $1.99" qty is 2)
+- If qty is ambiguous, default to 1
+
+Return only the JSON array.`;
+
+  const body = {
+    contents: [{
+      parts: [
+        { text: prompt },
+        { inline_data: { mime_type: mimeType, data: base64 } }
+      ]
+    }]
+  };
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Gemini API error ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const clean = text.replace(/```json|```/g, '').trim();
+  try {
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) throw new Error('Not an array');
+    return parsed;
+  } catch {
+    throw new Error('Could not parse AI response. Please try again.');
+  }
+}
+
+// =====================================================================
+// CATEGORY MATCHING
+// =====================================================================
+function matchItemsToPantry(rawItems) {
+  const existingItems = pantry; // [{name, category, ...}]
+  const existingCategories = [...new Set(pantry.map(p => p.category.toLowerCase()))];
+
+  return rawItems.map(item => {
+    const nameLower = item.name.toLowerCase();
+
+    // 1. Try exact name match in pantry
+    const exactMatch = pantry.find(p => p.name.toLowerCase() === nameLower);
+    if (exactMatch) {
+      return { ...item, suggestedCategory: exactMatch.category, matchType: 'existing-item', existingId: exactMatch.id };
+    }
+
+    // 2. Try to find if name contains an existing category (user-defined category takes priority)
+    // e.g. "ice cream sandwich" contains "ice cream" → put under ice cream
+    let bestCatMatch = null;
+    let bestCatLen = 0;
+    for (const cat of [...new Set(pantry.map(p => p.category))]) {
+      const catL = cat.toLowerCase();
+      if (nameLower.includes(catL) && catL.length > bestCatLen) {
+        bestCatMatch = cat;
+        bestCatLen = catL.length;
+      }
+    }
+    if (bestCatMatch) {
+      return { ...item, suggestedCategory: bestCatMatch, matchType: 'category-match' };
+    }
+
+    // 3. Check if existing category word is contained in name, for very close things
+    // e.g. item is "yogurt strawberry", existing cat is "yogurt"
+    for (const cat of [...new Set(pantry.map(p => p.category))]) {
+      const catWords = cat.toLowerCase().split(' ');
+      if (catWords.some(w => w.length > 3 && nameLower.includes(w))) {
+        return { ...item, suggestedCategory: cat, matchType: 'word-match' };
+      }
+    }
+
+    // 4. No match — use the item name itself as category
+    // Capitalize nicely
+    const defaultCat = item.name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return { ...item, suggestedCategory: defaultCat, matchType: 'new' };
+  });
+}
+
+// =====================================================================
+// REVIEW PANEL
+// =====================================================================
+function renderReview() {
+  const list = document.getElementById('review-items-list');
+  const panel = document.getElementById('receipt-review');
+  panel.style.display = 'block';
+
+  list.innerHTML = reviewItems.map((item, i) => `
+    <div class="review-item" id="review-row-${i}">
+      <div style="flex:1.4">
+        <input type="text" value="${escHtml(item.name)}" id="ri-name-${i}" placeholder="Item name">
+        <input type="text" value="${escHtml(item.suggestedCategory)}" id="ri-cat-${i}" placeholder="Category" style="margin-top:5px" list="category-datalist">
+      </div>
+      <input type="number" value="${item.qty}" id="ri-qty-${i}" min="0" step="0.5">
+      <span class="unit-label">${escHtml(item.unit || 'qty')}</span>
+      <span class="match-badge ${item.matchType === 'new' ? 'match-new' : 'match-existing'}">
+        ${item.matchType === 'new' ? '+ New' : '↩ Matched'}
+      </span>
+      <button class="review-remove" onclick="removeReviewItem(${i})" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeReviewItem(i) {
+  reviewItems.splice(i, 1);
+  if (reviewItems.length === 0) {
+    clearReview();
+  } else {
+    renderReview();
+  }
+}
+
+function clearReview() {
+  reviewItems = [];
+  document.getElementById('receipt-review').style.display = 'none';
+  document.getElementById('review-items-list').innerHTML = '';
+}
+
+function addReviewedItemsToPantry() {
+  const rows = document.querySelectorAll('[id^="review-row-"]');
+  rows.forEach((_, i) => {
+    const name = document.getElementById(`ri-name-${i}`)?.value?.trim();
+    const category = document.getElementById(`ri-cat-${i}`)?.value?.trim() || name;
+    const qty = parseFloat(document.getElementById(`ri-qty-${i}`)?.value) || 1;
+    const unit = reviewItems[i]?.unit || '';
+
+    if (!name) return;
+
+    // Find existing item (same name, case-insensitive)
+    const existing = pantry.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      existing.qty += qty;
+    } else {
+      pantry.push({
+        id: Date.now() + Math.random(),
+        name,
+        category,
+        qty,
+        unit,
+        threshold: 1
+      });
+    }
+  });
+
+  savePantry();
+  clearReview();
+  showStatus('success', '✓ Items added to your pantry!');
+  document.getElementById('scan-preview-wrap').style.display = 'none';
+}
+
+// =====================================================================
+// INVENTORY RENDERING
+// =====================================================================
+function renderInventory() {
+  const search = document.getElementById('inventory-search')?.value?.toLowerCase() || '';
+  const grid = document.getElementById('inventory-grid');
+
+  // Update datalists
+  updateCategoryDatalist();
+
+  const filtered = pantry.filter(item =>
+    item.name.toLowerCase().includes(search) ||
+    item.category.toLowerCase().includes(search)
+  );
+
+  if (pantry.length === 0) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🥫</div>
+      <h3>Your pantry is empty</h3>
+      <p>Scan a receipt or add items manually to get started</p>
+    </div>`;
+    return;
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <h3>No results</h3>
+      <p>Try a different search term</p>
+    </div>`;
+    return;
+  }
+
+  // Group by category
+  const byCategory = {};
+  filtered.forEach(item => {
+    if (!byCategory[item.category]) byCategory[item.category] = [];
+    byCategory[item.category].push(item);
+  });
+
+  grid.innerHTML = Object.entries(byCategory).sort(([a], [b]) => a.localeCompare(b)).map(([cat, items]) => `
+    <div class="category-section" id="cat-sec-${slugify(cat)}">
+      <div class="category-header" onclick="toggleCategory('${slugify(cat)}')">
+        <div class="category-name">${escHtml(cat)}</div>
+        <span class="category-count">${items.length}</span>
+        <span class="category-toggle">▾</span>
+      </div>
+      <div class="items-grid">
+        ${items.map(item => renderItemCard(item)).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderItemCard(item) {
+  const isOut = item.qty <= 0;
+  const isLow = !isOut && item.qty <= (item.threshold || 1);
+  const statusClass = isOut ? 'out' : (isLow ? 'low' : 'good');
+  const cardClass = isOut ? 'out' : (isLow ? 'low' : '');
+
+  return `<div class="item-card ${cardClass}" id="item-card-${item.id}">
+    <div class="item-status-dot ${statusClass}"></div>
+    <div class="item-name">${escHtml(item.name)}</div>
+    <div class="item-qty-row">
+      <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
+      <span class="qty-display">${item.qty % 1 === 0 ? item.qty : item.qty.toFixed(1)}</span>
+      <button class="qty-btn" onclick="changeQty('${item.id}', 1)">+</button>
+      ${item.unit ? `<span class="qty-unit">${escHtml(item.unit)}</span>` : ''}
+    </div>
+    <div class="low-threshold-row">
+      <span class="threshold-label">Low at:</span>
+      <input class="threshold-input" type="number" value="${item.threshold || 1}" min="0" step="0.5"
+        onchange="setThreshold('${item.id}', this.value)" title="Set low threshold">
+    </div>
+    <button class="item-delete-btn" onclick="deleteItem('${item.id}')" title="Delete">🗑</button>
+  </div>`;
+}
+
+function toggleCategory(slug) {
+  const sec = document.getElementById('cat-sec-' + slug);
+  if (sec) sec.classList.toggle('collapsed');
+}
+
+function changeQty(id, delta) {
+  const item = pantry.find(p => p.id == id);
+  if (item) {
+    item.qty = Math.max(0, (item.qty || 0) + delta);
+    savePantry();
+    renderInventory();
+  }
+}
+
+function setThreshold(id, val) {
+  const item = pantry.find(p => p.id == id);
+  if (item) {
+    item.threshold = Math.max(0, parseFloat(val) || 0);
+    savePantry();
+    // Update card class without full re-render
+    renderInventory();
+  }
+}
+
+function deleteItem(id) {
+  pantry = pantry.filter(p => p.id != id);
+  savePantry();
+  renderInventory();
+}
+
+// =====================================================================
+// MANUAL ADD
+// =====================================================================
+function toggleAddForm() {
+  const form = document.getElementById('add-item-form');
+  form.classList.toggle('open');
+}
+
+function addManualItem() {
+  const name = document.getElementById('new-item-name').value.trim();
+  const category = document.getElementById('new-item-category').value.trim() || name;
+  const qty = parseFloat(document.getElementById('new-item-qty').value) || 0;
+  const unit = document.getElementById('new-item-unit').value.trim();
+  const threshold = parseFloat(document.getElementById('new-item-threshold').value) || 1;
+
+  if (!name) { alert('Please enter an item name'); return; }
+
+  const existing = pantry.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    pantry.push({ id: Date.now() + Math.random(), name, category, qty, unit, threshold });
+  }
+  savePantry();
+
+  // Reset form
+  document.getElementById('new-item-name').value = '';
+  document.getElementById('new-item-qty').value = '1';
+  document.getElementById('new-item-unit').value = '';
+  document.getElementById('add-item-form').classList.remove('open');
+  renderInventory();
+}
+
+// =====================================================================
+// SHOPPING MODE
+// =====================================================================
+function renderShopping() {
+  const container = document.getElementById('shopping-list-content');
+
+  const outItems = pantry.filter(p => p.qty <= 0);
+  const lowItems = pantry.filter(p => p.qty > 0 && p.qty <= (p.threshold || 1));
+
+  if (outItems.length === 0 && lowItems.length === 0) {
+    container.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🎉</div>
+      <h3>You're all stocked up!</h3>
+      <p>No items are currently low or out of stock</p>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+
+  if (outItems.length > 0) {
+    html += `<div class="shop-section">
+      <div class="shop-section-title urgent">🚨 Out of Stock (${outItems.length})</div>
+      ${outItems.sort((a,b) => a.name.localeCompare(b.name)).map(item => shopItemHTML(item, 'out')).join('')}
+    </div>`;
+  }
+
+  if (lowItems.length > 0) {
+    html += `<div class="shop-section">
+      <div class="shop-section-title low-col">⚠️ Running Low (${lowItems.length})</div>
+      ${lowItems.sort((a,b) => (a.qty / (a.threshold||1)) - (b.qty / (b.threshold||1))).map(item => shopItemHTML(item, 'low')).join('')}
+    </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function shopItemHTML(item, urgency) {
+  const detail = urgency === 'out'
+    ? `Out of stock · was in ${escHtml(item.category)}`
+    : `${item.qty}${item.unit ? ' ' + escHtml(item.unit) : ''} left · low threshold: ${item.threshold}`;
+
+  return `<div class="shop-item" id="shop-item-${item.id}">
+    <div class="shop-check" id="shop-check-${item.id}" onclick="toggleShopCheck('${item.id}')"></div>
+    <div class="shop-item-info">
+      <div class="shop-item-name">${escHtml(item.name)}</div>
+      <div class="shop-item-detail">${detail}</div>
+    </div>
+    <span class="shop-item-urgency ${urgency === 'out' ? 'urgency-out' : 'urgency-low'}">
+      ${urgency === 'out' ? 'Out' : 'Low'}
+    </span>
+  </div>`;
+}
+
+function toggleShopCheck(id) {
+  const item = document.getElementById('shop-item-' + id);
+  const check = document.getElementById('shop-check-' + id);
+  const isChecked = check.classList.toggle('checked');
+  item.classList.toggle('checked', isChecked);
+  check.textContent = isChecked ? '✓' : '';
+}
+
+// =====================================================================
+// HELPERS
+// =====================================================================
+function updateCategoryDatalist() {
+  const dl = document.getElementById('category-datalist');
+  if (!dl) return;
+  const cats = [...new Set(pantry.map(p => p.category))].sort();
+  dl.innerHTML = cats.map(c => `<option value="${escHtml(c)}">`).join('');
+}
+
+function showStatus(type, msg) {
+  const bar = document.getElementById('scan-status');
+  bar.className = 'status-bar ' + type;
+  bar.textContent = msg;
+  bar.style.display = 'block';
+  if (type === 'success') setTimeout(() => { bar.style.display = 'none'; }, 4000);
+}
+
+function showProcessing(show, msg) {
+  const overlay = document.getElementById('processing-overlay');
+  overlay.classList.toggle('show', show);
+  if (msg) document.getElementById('processing-msg').textContent = msg;
+}
+
+function showProcessingMsg(msg) {
+  document.getElementById('processing-msg').textContent = msg;
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, '-');
+}
+
+// =====================================================================
+// INIT
+// =====================================================================
+renderInventory();
+</script>
+</body>
+</html>
