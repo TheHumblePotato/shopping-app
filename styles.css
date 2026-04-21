@@ -441,7 +441,40 @@ input, select, button { font-family: var(--font-body); }
 .scan-zone-icon { color: var(--text-tertiary); margin-bottom: 16px; transition: color 0.2s; }
 .scan-zone:hover .scan-zone-icon { color: var(--accent); }
 .scan-zone-title { font-family: var(--font-display); font-size: 1.4rem; font-weight: 600; margin-bottom: 6px; }
-.scan-zone-body { font-size: 0.85rem; color: var(--text-secondary); }
+.scan-zone-body { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+.scan-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.btn-camera { border-color: var(--accent); color: var(--accent); }
+.btn-camera:hover { background: var(--accent-dim); }
+
+/* Live camera view */
+.camera-view {
+  margin-top: 16px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #000;
+}
+.camera-view video {
+  display: block;
+  width: 100%;
+  max-height: 400px;
+  object-fit: cover;
+}
+.camera-controls {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  justify-content: center;
+}
 
 .scan-preview-wrap {
   margin-top: 20px;
