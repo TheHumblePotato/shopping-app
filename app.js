@@ -46,13 +46,12 @@ const firebaseConfig = {
   appId:             "1:323355056685:web:41661b5d6b8da54fe4f6a4"
 };
 
-// API keys & external services — edit here to swap providers
-// OCR: API Ninjas imagetotext (images, compressed to <200KB)
-// PDF text: pdf.js (loaded from CDN, no key needed)
-// AI parsing: Gemini 2.5 Flash Lite via Google Generative Language REST API
-const API_NINJAS_KEY  = 'lSaumA3b327yWoF07WURK6efk8u5zAAN2EhmP9fU';
+// API keys — only Gemini needed now
+// OCR is handled 100% in-browser by Tesseract.js (no key, no quota, no server)
+// PDF text extraction via pdf.js (also in-browser, no key)
+// AI parsing: Gemini 2.5 Flash Lite (text-only, cheap)
 const GEMINI_API_KEY  = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL    = 'gemini-2.5-flash-lite'; // fast & cheap, text-only parsing
+const GEMINI_MODEL    = 'gemini-2.5-flash-lite-preview-06-17';
 
 // [THRESHOLDS] — default "low" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
@@ -339,22 +338,18 @@ async function processReceiptFile(file) {
     let rawText = '';
 
     if (isPDF) {
-      // PDFs: extract text directly from the PDF bytes using pdf.js
       showProcessingMsg('Extracting text from PDF…');
       rawText = await extractTextFromPDF(file);
-      if (!rawText.trim()) throw new Error('No readable text found in PDF — is it a scanned image PDF?');
+      if (!rawText.trim()) throw new Error('No readable text in PDF — is it a scanned image PDF?');
     } else {
-      // Images: compress to <200 KB then OCR via API Ninjas
-      showProcessingMsg('Compressing image…');
-      const compressed = await compressImageBelow200KB(file);
-      showProcessingMsg('Running OCR…');
-      rawText = await ocrWithApiNinjas(compressed);
+      // Tesseract.js runs entirely in-browser — no API key, no quota
+      showProcessingMsg('Loading OCR engine… (first run ~10s)');
+      rawText = await ocrWithTesseract(file, (msg) => showProcessingMsg(msg));
       if (!rawText.trim()) throw new Error('OCR found no text — try a clearer, well-lit photo');
     }
 
-    // Parse raw OCR/PDF text into structured grocery items via Claude
-    showProcessingMsg('Parsing items with AI…');
-    const items = await parseReceiptTextWithClaude(rawText);
+    showProcessingMsg('Parsing items with Gemini…');
+    const items = await parseReceiptTextWithGemini(rawText);
 
     showProcessing(false);
     if (items.length === 0) {
@@ -372,89 +367,70 @@ async function processReceiptFile(file) {
 }
 
 // ================================================================
-// STEP 1a — Compress image to below 200 KB using canvas
+// STEP 1a — Tesseract.js in-browser OCR (zero API keys, zero quota)
+// Loads once from CDN, then runs entirely in a local Web Worker
 // ================================================================
-function compressImageBelow200KB(file) {
-  return new Promise((resolve, reject) => {
+async function ocrWithTesseract(imageFile, onProgress) {
+  if (!window.Tesseract) {
+    onProgress('Loading OCR engine…');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
+  }
+  // Resize for good OCR accuracy without being huge
+  const blob = await resizeForOCR(imageFile);
+  const url  = URL.createObjectURL(blob);
+  try {
+    const result = await Tesseract.recognize(url, 'eng', {
+      logger: (m) => {
+        if      (m.status === 'recognizing text')          onProgress(`OCR in progress… ${Math.round((m.progress||0)*100)}%`);
+        else if (m.status === 'loading tesseract core')    onProgress('Loading OCR engine…');
+        else if (m.status === 'initializing tesseract')    onProgress('Initializing OCR…');
+        else if (m.status === 'loading language traineddata') onProgress('Loading language data…');
+      }
+    });
+    return result.data.text || '';
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function resizeForOCR(file) {
+  return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      // Start at original size, scale down if needed
+      const MAX = 2000;
       let w = img.width, h = img.height;
-      // Cap at 1600px on longest side to keep file reasonable
-      const MAX_DIM = 1600;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
+      if (w > MAX || h > MAX) {
+        const r = Math.min(MAX/w, MAX/h);
+        w = Math.round(w*r); h = Math.round(h*r);
       }
+      const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-
-      // Try quality levels from 0.85 down until under 200 KB
-      const tryQuality = (q) => {
-        canvas.toBlob((blob) => {
-          if (!blob) return reject(new Error('Canvas toBlob failed'));
-          if (blob.size <= 200 * 1024 || q <= 0.2) {
-            resolve(new File([blob], 'receipt.jpg', { type: 'image/jpeg' }));
-          } else {
-            tryQuality(Math.round((q - 0.1) * 10) / 10);
-          }
-        }, 'image/jpeg', q);
-      };
-      tryQuality(0.85);
+      canvas.toBlob((blob) => resolve(blob || file), 'image/png');
     };
-    img.onerror = () => reject(new Error('Failed to load image'));
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
   });
 }
 
 // ================================================================
-// STEP 1b — OCR via API Ninjas imagetotext
-// ================================================================
-async function ocrWithApiNinjas(imageFile) {
-  const formData = new FormData();
-  formData.append('image', imageFile);
-
-  const resp = await fetch('https://api.api-ninjas.com/v1/imagetotext', {
-    method: 'POST',
-    headers: { 'X-Api-Key': API_NINJAS_KEY },
-    body: formData
-  });
-
-  if (!resp.ok) {
-    const msg = await resp.text().catch(() => '');
-    throw new Error(`OCR failed (${resp.status}): ${msg || 'API Ninjas error'}`);
-  }
-
-  const result = await resp.json();
-  // API returns [{ text: "...", score: 0.9 }, ...] — join all lines
-  if (!Array.isArray(result) || result.length === 0) return '';
-  return result.map(r => r.text || '').join('\n');
-}
-
-// ================================================================
-// STEP 1c — Extract text from PDF using pdf.js (CDN)
+// STEP 1b — Extract text from PDF using pdf.js (CDN, no key)
 // ================================================================
 async function extractTextFromPDF(file) {
-  // Lazy-load pdf.js from CDN
   if (!window.pdfjsLib) {
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
-
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   let fullText = '';
-
   for (let i = 1; i <= pdf.numPages; i++) {
     const page    = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const pageText = content.items.map(item => item.str).join(' ');
-    fullText += pageText + '\n';
+    fullText += content.items.map(item => item.str).join(' ') + '\n';
   }
   return fullText;
 }
@@ -463,32 +439,32 @@ function loadScript(src) {
   return new Promise((res, rej) => {
     if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
     const s = document.createElement('script');
-    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Script load failed: ' + src));
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Failed to load: ' + src));
     document.head.appendChild(s);
   });
 }
 
 // ================================================================
 // STEP 2 — Parse raw OCR/PDF text → structured items via Gemini
-// Uses text-only input (OCR already extracted the text)
+// Text-only request — uses very few tokens, well within free tier
 // ================================================================
-async function parseReceiptTextWithClaude(rawText) {
+async function parseReceiptTextWithGemini(rawText) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-  const prompt = `You are a grocery receipt parser. Below is raw OCR text extracted from a grocery receipt. Extract all food/grocery items purchased.
+  const prompt = `You are a grocery receipt parser. Below is raw OCR text from a grocery receipt. Extract all food/grocery items.
 
-Return ONLY a raw JSON array — no markdown fences, no explanation, no preamble. Each element:
-{"name":"clean readable item name","qty":<number>,"unit":"<unit or empty string>"}
+Return ONLY a raw JSON array — no markdown, no explanation. Each element:
+{"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
 
 Rules:
-- SKIP taxes, totals, subtotals, fees, store name, phone, dates, cashier info
+- SKIP taxes, totals, subtotals, fees, store name, phone, dates, cashier lines
 - Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" → "Orange Juice")
-- If quantity is shown (e.g. "2 @ $1.99"), set qty accordingly
+- If quantity shown (e.g. "2 @ $1.99") set qty = 2
 - Default qty = 1 if unclear
-- unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — empty string for plain counts
-- Return ONLY the JSON array, nothing else
+- unit: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string
+- Return ONLY the JSON array
 
-Raw receipt text:
+Receipt text:
 ${rawText.slice(0, 4000)}`;
 
   const resp = await fetch(url, {
@@ -504,6 +480,23 @@ ${rawText.slice(0, 4000)}`;
     const e = await resp.json().catch(() => ({}));
     throw new Error(e?.error?.message || `Gemini API error ${resp.status}`);
   }
+
+  const data    = await resp.json();
+  const text    = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const clean   = text.replace(/```json|```/gi, '').trim();
+  const match   = clean.match(/\[[\s\S]*\]/);
+  const jsonStr = match ? match[0] : clean;
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!Array.isArray(parsed)) throw new Error('Not an array');
+    return parsed.filter(i => i.name && String(i.name).trim().length > 0);
+  } catch {
+    console.error('Gemini raw response:', text);
+    throw new Error('AI parsing failed — try a clearer photo');
+  }
+}
+
 
   const data  = await resp.json();
   const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
