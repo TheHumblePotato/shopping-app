@@ -46,10 +46,13 @@ const firebaseConfig = {
   appId:             "1:323355056685:web:41661b5d6b8da54fe4f6a4"
 };
 
-// OCR & AI: Gemini 2.0 Flash via REST — multimodal (images + PDF)
-// Swap key/model here if needed.
-const GEMINI_API_KEY  = "AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8";
-const GEMINI_MODEL    = "gemini-2.0-flash";  // stable multimodal model
+// API keys & external services — edit here to swap providers
+// OCR: API Ninjas imagetotext (images, compressed to <200KB)
+// PDF text: pdf.js (loaded from CDN, no key needed)
+// AI parsing: Gemini 2.5 Flash Lite via Google Generative Language REST API
+const API_NINJAS_KEY  = 'lSaumA3b327yWoF07WURK6efk8u5zAAN2EhmP9fU';
+const GEMINI_API_KEY  = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
+const GEMINI_MODEL    = 'gemini-2.5-flash-lite-preview-06-17'; // fast & cheap, text-only parsing
 
 // [THRESHOLDS] — default "low" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
@@ -312,15 +315,15 @@ window.captureFromCamera = () => {
 async function processReceiptFile(file) {
   const isPDF = file.type === 'application/pdf';
 
-  // Show preview (image only — PDFs get a placeholder)
+  // Show preview
   const previewWrap = document.getElementById('scan-preview-wrap');
   const previewImg  = document.getElementById('scan-preview-img');
   if (isPDF) {
     previewImg.src = 'data:image/svg+xml,' + encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
-        <rect width="200" height="120" fill="#1A1814"/>
-        <text x="100" y="55" font-family="sans-serif" font-size="28" fill="#C8954A" text-anchor="middle">📄</text>
-        <text x="100" y="82" font-family="sans-serif" font-size="13" fill="#9A8F82" text-anchor="middle">PDF receipt</text>
+      `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130" viewBox="0 0 240 130">
+        <rect width="240" height="130" rx="8" fill="#1A1814"/>
+        <text x="120" y="58" font-family="sans-serif" font-size="32" fill="#C8954A" text-anchor="middle">📄</text>
+        <text x="120" y="86" font-family="sans-serif" font-size="13" fill="#9A8F82" text-anchor="middle">PDF — ${file.name}</text>
       </svg>`);
     previewWrap.style.display = 'block';
   } else {
@@ -329,14 +332,30 @@ async function processReceiptFile(file) {
     reader.readAsDataURL(file);
   }
 
-  showStatus('info', isPDF ? 'Reading PDF…' : 'Reading image…');
+  showStatus('info', isPDF ? '📄 Reading PDF receipt…' : '🔍 Reading receipt image…');
   showProcessing(true, 'Preparing file…');
 
   try {
-    const base64 = await fileToBase64(file);
-    const mime   = file.type || (isPDF ? 'application/pdf' : 'image/jpeg');
-    showProcessingMsg('Parsing items with Gemini 2.0…');
-    const items  = await extractItemsGemini(base64, mime);
+    let rawText = '';
+
+    if (isPDF) {
+      // PDFs: extract text directly from the PDF bytes using pdf.js
+      showProcessingMsg('Extracting text from PDF…');
+      rawText = await extractTextFromPDF(file);
+      if (!rawText.trim()) throw new Error('No readable text found in PDF — is it a scanned image PDF?');
+    } else {
+      // Images: compress to <200 KB then OCR via API Ninjas
+      showProcessingMsg('Compressing image…');
+      const compressed = await compressImageBelow200KB(file);
+      showProcessingMsg('Running OCR…');
+      rawText = await ocrWithApiNinjas(compressed);
+      if (!rawText.trim()) throw new Error('OCR found no text — try a clearer, well-lit photo');
+    }
+
+    // Parse raw OCR/PDF text into structured grocery items via Claude
+    showProcessingMsg('Parsing items with AI…');
+    const items = await parseReceiptTextWithClaude(rawText);
+
     showProcessing(false);
     if (items.length === 0) {
       showStatus('error', '✕ No grocery items found — try a clearer photo');
@@ -352,68 +371,143 @@ async function processReceiptFile(file) {
   }
 }
 
-function fileToBase64(file) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload  = () => res(r.result.split(',')[1]);
-    r.onerror = () => rej(new Error('File read failed'));
-    r.readAsDataURL(file);
+// ================================================================
+// STEP 1a — Compress image to below 200 KB using canvas
+// ================================================================
+function compressImageBelow200KB(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      // Start at original size, scale down if needed
+      let w = img.width, h = img.height;
+      // Cap at 1600px on longest side to keep file reasonable
+      const MAX_DIM = 1600;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+      // Try quality levels from 0.85 down until under 200 KB
+      const tryQuality = (q) => {
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error('Canvas toBlob failed'));
+          if (blob.size <= 200 * 1024 || q <= 0.2) {
+            resolve(new File([blob], 'receipt.jpg', { type: 'image/jpeg' }));
+          } else {
+            tryQuality(Math.round((q - 0.1) * 10) / 10);
+          }
+        }, 'image/jpeg', q);
+      };
+      tryQuality(0.85);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = url;
   });
 }
 
 // ================================================================
-// [AI] — Receipt parsing via Gemini 2.0 Flash (REST, v1beta)
-// Supports JPG/PNG/HEIC images AND PDF receipts natively
+// STEP 1b — OCR via API Ninjas imagetotext
 // ================================================================
-async function extractItemsGemini(base64, mimeType) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+async function ocrWithApiNinjas(imageFile) {
+  const formData = new FormData();
+  formData.append('image', imageFile);
 
-  const prompt = `You are a grocery receipt parser. Look at this receipt (image or PDF) and extract every food/grocery line item.
+  const resp = await fetch('https://api.api-ninjas.com/v1/imagetotext', {
+    method: 'POST',
+    headers: { 'X-Api-Key': API_NINJAS_KEY },
+    body: formData
+  });
 
-Return ONLY a raw JSON array — no markdown fences, no preamble, no explanation. Each element:
-{
-  "name": "clean readable name (e.g. 'Orange Juice' not 'TROP PURE PREM OJ FL 52OZ')",
-  "qty": <number — quantity purchased, default 1 if unclear>,
-  "unit": "<unit: box, can, lb, oz, carton, bag, bottle, gallon, pack — empty string if just a count>"
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => '');
+    throw new Error(`OCR failed (${resp.status}): ${msg || 'API Ninjas error'}`);
+  }
+
+  const result = await resp.json();
+  // API returns [{ text: "...", score: 0.9 }, ...] — join all lines
+  if (!Array.isArray(result) || result.length === 0) return '';
+  return result.map(r => r.text || '').join('\n');
 }
 
+// ================================================================
+// STEP 1c — Extract text from PDF using pdf.js (CDN)
+// ================================================================
+async function extractTextFromPDF(file) {
+  // Lazy-load pdf.js from CDN
+  if (!window.pdfjsLib) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page    = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(' ');
+    fullText += pageText + '\n';
+  }
+  return fullText;
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Script load failed: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// ================================================================
+// STEP 2 — Parse raw OCR/PDF text → structured items via Gemini
+// Uses text-only input (OCR already extracted the text)
+// ================================================================
+async function parseReceiptTextWithClaude(rawText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const prompt = `You are a grocery receipt parser. Below is raw OCR text extracted from a grocery receipt. Extract all food/grocery items purchased.
+
+Return ONLY a raw JSON array — no markdown fences, no explanation, no preamble. Each element:
+{"name":"clean readable item name","qty":<number>,"unit":"<unit or empty string>"}
+
 Rules:
-- SKIP taxes, fees, totals, subtotals, store info, phone, dates, cashier lines
-- Normalize ALL-CAPS abbreviated names to proper English
-- If "2 @ $x.xx" appears, qty = 2
-- Combine multi-line items that refer to the same product
-- Default qty = 1 when unclear
+- SKIP taxes, totals, subtotals, fees, store name, phone, dates, cashier info
+- Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" → "Orange Juice")
+- If quantity is shown (e.g. "2 @ $1.99"), set qty accordingly
+- Default qty = 1 if unclear
+- unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — empty string for plain counts
+- Return ONLY the JSON array, nothing else
 
-Return ONLY the JSON array.`;
-
-  const body = {
-    contents: [{
-      parts: [
-        { text: prompt },
-        { inline_data: { mime_type: mimeType, data: base64 } }
-      ]
-    }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
-  };
+Raw receipt text:
+${rawText.slice(0, 4000)}`;
 
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+    })
   });
 
   if (!resp.ok) {
-    const errData = await resp.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `Gemini API error ${resp.status}`);
+    const e = await resp.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Gemini API error ${resp.status}`);
   }
 
-  const data = await resp.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-  // Strip any accidental markdown fences
+  const data  = await resp.json();
+  const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const clean = text.replace(/```json|```/gi, '').trim();
-
-  // Robustly extract JSON array
   const match = clean.match(/\[[\s\S]*\]/);
   const jsonStr = match ? match[0] : clean;
 
@@ -422,8 +516,8 @@ Return ONLY the JSON array.`;
     if (!Array.isArray(parsed)) throw new Error('Not an array');
     return parsed.filter(i => i.name && String(i.name).trim().length > 0);
   } catch {
-    console.error('Raw AI response:', text);
-    throw new Error('AI returned unexpected format — try a clearer photo or better-lit receipt');
+    console.error('Gemini raw response:', text);
+    throw new Error('AI parsing failed — try a clearer photo');
   }
 }
 
