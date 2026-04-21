@@ -4,20 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pantry — Smart Shopping List</title>
-
-  <!-- ============================================================
-       FONTS — change these to restyle typography globally
-       Current: Cormorant Garamond (display) + DM Sans (body)
-       ============================================================ -->
+  <!-- FONTS — swap families here to restyle globally -->
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-  <!-- ============================================================
-       AUTH SCREEN
-       ============================================================ -->
+  <!-- AUTH SCREEN -->
   <div id="auth-screen" class="auth-screen">
     <div class="auth-bg-pattern"></div>
     <div class="auth-card">
@@ -27,7 +20,7 @@
         <p class="logo-tagline">Your smart kitchen companion</p>
       </div>
 
-      <!-- Login Form -->
+      <!-- Login -->
       <div id="auth-login" class="auth-form active">
         <h2 class="auth-heading">Welcome back</h2>
         <div class="field-group">
@@ -39,16 +32,21 @@
           <input type="password" id="login-password" class="field-input" placeholder="••••••••" autocomplete="current-password">
         </div>
         <div id="auth-error" class="auth-error" style="display:none"></div>
-        <button class="btn btn-primary btn-full" onclick="handleLogin()">Sign In</button>
+        <button class="btn btn-primary btn-full" id="btn-login">Sign In</button>
         <div class="auth-divider"><span>or</span></div>
-        <button class="btn btn-outline btn-full" onclick="handleGoogleLogin()">
-          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        <button class="btn btn-outline btn-full" id="btn-google-login">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
           Continue with Google
         </button>
-        <p class="auth-switch">No account? <a href="#" onclick="switchAuth('register')">Create one</a></p>
+        <p class="auth-switch">No account? <a href="#" id="link-to-register">Create one</a></p>
       </div>
 
-      <!-- Register Form -->
+      <!-- Register -->
       <div id="auth-register" class="auth-form">
         <h2 class="auth-heading">Create account</h2>
         <div class="field-group">
@@ -64,54 +62,39 @@
           <input type="password" id="reg-password" class="field-input" placeholder="Min. 6 characters" autocomplete="new-password">
         </div>
         <div id="reg-error" class="auth-error" style="display:none"></div>
-        <button class="btn btn-primary btn-full" onclick="handleRegister()">Create Account</button>
-        <p class="auth-switch">Have an account? <a href="#" onclick="switchAuth('login')">Sign in</a></p>
+        <button class="btn btn-primary btn-full" id="btn-register">Create Account</button>
+        <p class="auth-switch">Have an account? <a href="#" id="link-to-login">Sign in</a></p>
       </div>
     </div>
   </div>
 
-  <!-- ============================================================
-       MAIN APP (shown after login)
-       ============================================================ -->
+  <!-- MAIN APP -->
   <div id="app" style="display:none">
-
-    <!-- NAVBAR -->
     <nav class="nav">
       <div class="nav-left">
-        <!-- CUSTOMIZABLE: Change app name in .logo-text -->
-        <span class="nav-logo">Pantry</span>
+        <span class="nav-logo">Pantry</span><!-- CUSTOMIZABLE: app name -->
       </div>
       <div class="nav-tabs">
-        <button class="nav-tab active" data-tab="scan" onclick="showTab('scan',this)">
-          <span class="tab-icon">⟳</span>
-          <span class="tab-label">Scan</span>
-        </button>
-        <button class="nav-tab" data-tab="inventory" onclick="showTab('inventory',this)">
-          <span class="tab-icon">≡</span>
-          <span class="tab-label">Pantry</span>
-        </button>
-        <button class="nav-tab" data-tab="shopping" onclick="showTab('shopping',this)">
-          <span class="tab-icon">◎</span>
-          <span class="tab-label">Shop</span>
-        </button>
+        <button class="nav-tab active" data-tab="scan"      id="tab-btn-scan">      <span class="tab-icon">⟳</span><span class="tab-label">Scan</span></button>
+        <button class="nav-tab"        data-tab="inventory" id="tab-btn-inventory"> <span class="tab-icon">≡</span><span class="tab-label">Pantry</span></button>
+        <button class="nav-tab"        data-tab="shopping"  id="tab-btn-shopping">  <span class="tab-icon">◎</span><span class="tab-label">Shop</span></button>
       </div>
       <div class="nav-right">
-        <div class="user-chip" onclick="toggleUserMenu()">
+        <div class="user-chip" id="user-chip">
           <div class="user-avatar" id="user-avatar">?</div>
           <span id="user-name-nav" class="user-name-chip"></span>
         </div>
         <div class="user-menu" id="user-menu" style="display:none">
           <div class="user-menu-email" id="user-menu-email"></div>
           <hr class="menu-divider">
-          <button class="menu-item" onclick="handleSignOut()">Sign Out</button>
+          <button class="menu-item" id="btn-signout">Sign Out</button>
         </div>
       </div>
     </nav>
 
-    <!-- MAIN CONTENT -->
     <main class="main">
 
-      <!-- ========== SCAN TAB ========== -->
+      <!-- SCAN TAB -->
       <div class="tab-content active" id="tab-scan">
         <div class="page-header">
           <div class="page-header-text">
@@ -120,9 +103,7 @@
           </div>
         </div>
 
-        <!-- Drop Zone -->
-        <div class="scan-zone" id="scan-zone"
-             ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+        <div class="scan-zone" id="scan-zone">
           <div class="scan-zone-inner">
             <div class="scan-zone-icon">
               <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -133,81 +114,69 @@
               </svg>
             </div>
             <h3 class="scan-zone-title">Scan or upload a receipt</h3>
-            <p class="scan-zone-body">Photo (JPG/PNG/HEIC) or PDF — drag &amp; drop or use a button below</p>
+            <p class="scan-zone-body">Photo (JPG/PNG/HEIC) or PDF — drag &amp; drop or tap below</p>
             <div class="scan-btn-row">
-              <button class="btn btn-scan" onclick="document.getElementById('receipt-file').click()">
+              <button class="btn btn-scan" id="btn-upload-file">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Upload File
               </button>
-              <button class="btn btn-scan btn-camera" onclick="openCamera()">
+              <button class="btn btn-scan btn-camera" id="btn-open-camera">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
                 Take Photo
               </button>
             </div>
           </div>
-          <!-- gallery/file picker (images + PDF) -->
-          <input type="file" id="receipt-file" accept="image/*,application/pdf" onchange="handleFileSelect(event)">
-          <!-- camera capture (mobile native camera, images only) -->
-          <input type="file" id="camera-file" accept="image/*" capture="environment" onchange="handleFileSelect(event)" style="display:none">
+          <!-- Hidden file inputs — triggered via JS, never via inline onclick -->
+          <input type="file" id="receipt-file" accept="image/*,application/pdf" style="display:none">
+          <input type="file" id="camera-file"  accept="image/*" capture="environment" style="display:none">
         </div>
 
-        <!-- Live Camera View (desktop / fallback) -->
+        <!-- Live camera (desktop) -->
         <div class="camera-view" id="camera-view" style="display:none">
           <video id="camera-video" autoplay playsinline muted></video>
           <div class="camera-controls">
-            <button class="btn btn-primary" onclick="captureFromCamera()">
+            <button class="btn btn-primary" id="btn-capture">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg>
               Capture
             </button>
-            <button class="btn btn-ghost" onclick="closeCameraView()">Cancel</button>
+            <button class="btn btn-ghost" id="btn-cancel-camera">Cancel</button>
           </div>
           <canvas id="camera-canvas" style="display:none"></canvas>
         </div>
 
-        <!-- Preview -->
-        <div class="scan-preview-wrap" id="scan-preview-wrap">
+        <div class="scan-preview-wrap" id="scan-preview-wrap" style="display:none">
           <img id="scan-preview-img" src="" alt="Receipt preview">
-          <button class="preview-remove-btn" onclick="clearPreview()">✕</button>
+          <button class="preview-remove-btn" id="btn-clear-preview">✕</button>
         </div>
 
-        <!-- Status -->
-        <div class="status-bar" id="scan-status"></div>
+        <div class="status-bar" id="scan-status" style="display:none"></div>
 
-        <!-- Review Panel -->
-        <div class="review-panel" id="receipt-review">
+        <!-- Review panel -->
+        <div class="review-panel" id="receipt-review" style="display:none">
           <div class="review-panel-header">
             <div>
               <h3 class="review-panel-title">Review Scanned Items</h3>
-              <p class="review-panel-sub">Edit before adding to your pantry. Matched items were paired to existing categories.</p>
+              <p class="review-panel-sub">Edit before adding to your pantry.</p>
             </div>
-            <button class="btn btn-sm btn-outline" onclick="addReviewRow()">+ Add row</button>
+            <button class="btn btn-sm btn-outline" id="btn-add-review-row">+ Add row</button>
           </div>
           <div class="review-table-wrap">
             <table class="review-table">
-              <thead>
-                <tr>
-                  <th>Item Name</th>
-                  <th>Category</th>
-                  <th>Qty</th>
-                  <th>Unit</th>
-                  <th>Match</th>
-                  <th></th>
-                </tr>
-              </thead>
+              <thead><tr><th>Item Name</th><th>Category</th><th>Qty</th><th>Unit</th><th>Match</th><th></th></tr></thead>
               <tbody id="review-tbody"></tbody>
             </table>
           </div>
           <div class="review-actions">
-            <button class="btn btn-primary" onclick="addReviewedItemsToPantry()">
+            <button class="btn btn-primary" id="btn-add-to-pantry">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
               Add to Pantry
             </button>
-            <button class="btn btn-ghost" onclick="clearReview()">Cancel</button>
+            <button class="btn btn-ghost" id="btn-cancel-review">Cancel</button>
           </div>
         </div>
       </div>
 
-      <!-- ========== INVENTORY TAB ========== -->
+      <!-- INVENTORY TAB -->
       <div class="tab-content" id="tab-inventory">
         <div class="page-header">
           <div class="page-header-text">
@@ -217,13 +186,12 @@
           <div class="page-header-actions">
             <div class="search-wrap">
               <svg class="search-icon-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-              <input type="text" id="inventory-search" class="search-input" placeholder="Search…" oninput="renderInventory()">
+              <input type="text" id="inventory-search" class="search-input" placeholder="Search…">
             </div>
-            <button class="btn btn-primary btn-sm" onclick="toggleAddForm()">+ Add Item</button>
+            <button class="btn btn-primary btn-sm" id="btn-toggle-add-form">+ Add Item</button>
           </div>
         </div>
 
-        <!-- Add Form -->
         <div class="add-form-panel" id="add-item-form">
           <div class="add-form-grid">
             <div class="field-group">
@@ -249,29 +217,25 @@
               <input type="number" id="new-item-threshold" class="field-input field-sm" value="1" min="0" step="0.5">
             </div>
             <div class="field-group add-form-submit">
-              <button class="btn btn-primary btn-sm" onclick="addManualItem()">Add</button>
-              <button class="btn btn-ghost btn-sm" onclick="toggleAddForm()">Cancel</button>
+              <button class="btn btn-primary btn-sm" id="btn-add-manual-item">Add</button>
+              <button class="btn btn-ghost btn-sm"   id="btn-cancel-add-form">Cancel</button>
             </div>
           </div>
         </div>
 
-        <!-- Inventory Grid -->
         <div id="inventory-grid"></div>
-
-        <!-- Sync indicator -->
         <div class="sync-indicator" id="sync-indicator"></div>
       </div>
 
-      <!-- ========== SHOPPING TAB ========== -->
+      <!-- SHOPPING TAB -->
       <div class="tab-content" id="tab-shopping">
         <div class="page-header">
           <div class="page-header-text">
             <h2 class="page-title">Shopping List</h2>
             <p class="page-subtitle">Items that need restocking, sorted by urgency</p>
           </div>
-          <button class="btn btn-sm btn-outline" onclick="clearCheckedShopItems()">Clear checked</button>
+          <button class="btn btn-sm btn-outline" id="btn-clear-checked">Clear checked</button>
         </div>
-
         <div id="shopping-list-content"></div>
       </div>
 
@@ -287,10 +251,8 @@
     </div>
   </div>
 
-  <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <!-- Firebase & App Scripts -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
