@@ -52,7 +52,7 @@ const firebaseConfig = {
 // AI parsing: Gemini 2.5 Flash Lite via Google Generative Language REST API
 const API_NINJAS_KEY  = 'lSaumA3b327yWoF07WURK6efk8u5zAAN2EhmP9fU';
 const GEMINI_API_KEY  = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL    = 'gemini-2.5-flash-lite-preview-06-17'; // fast & cheap, text-only parsing
+const GEMINI_MODEL    = 'gemini-2.5-flash-lite'; // fast & cheap, text-only parsing
 
 // [THRESHOLDS] — default "low" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
