@@ -122,7 +122,6 @@
 
         <!-- Drop Zone -->
         <div class="scan-zone" id="scan-zone"
-             onclick="document.getElementById('receipt-file').click()"
              ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
           <div class="scan-zone-inner">
             <div class="scan-zone-icon">
@@ -133,13 +132,36 @@
                 <path d="M13 34h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
             </div>
-            <h3 class="scan-zone-title">Drop receipt here</h3>
-            <p class="scan-zone-body">or tap to upload a photo from your camera roll</p>
-            <button class="btn btn-scan" onclick="event.stopPropagation(); document.getElementById('receipt-file').click()">
-              Choose Photo
-            </button>
+            <h3 class="scan-zone-title">Scan or upload a receipt</h3>
+            <p class="scan-zone-body">Photo (JPG/PNG/HEIC) or PDF — drag &amp; drop or use a button below</p>
+            <div class="scan-btn-row">
+              <button class="btn btn-scan" onclick="document.getElementById('receipt-file').click()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload File
+              </button>
+              <button class="btn btn-scan btn-camera" onclick="openCamera()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                Take Photo
+              </button>
+            </div>
           </div>
-          <input type="file" id="receipt-file" accept="image/*" onchange="handleFileSelect(event)">
+          <!-- gallery/file picker (images + PDF) -->
+          <input type="file" id="receipt-file" accept="image/*,application/pdf" onchange="handleFileSelect(event)">
+          <!-- camera capture (mobile native camera, images only) -->
+          <input type="file" id="camera-file" accept="image/*" capture="environment" onchange="handleFileSelect(event)" style="display:none">
+        </div>
+
+        <!-- Live Camera View (desktop / fallback) -->
+        <div class="camera-view" id="camera-view" style="display:none">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <div class="camera-controls">
+            <button class="btn btn-primary" onclick="captureFromCamera()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg>
+              Capture
+            </button>
+            <button class="btn btn-ghost" onclick="closeCameraView()">Cancel</button>
+          </div>
+          <canvas id="camera-canvas" style="display:none"></canvas>
         </div>
 
         <!-- Preview -->
