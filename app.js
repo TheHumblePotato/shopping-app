@@ -1,42 +1,20 @@
-/* ================================================================
-   PANTRY APP — app.js
-   ================================================================
-   CUSTOMIZATION GUIDE:
-   - [CONFIG]   → API keys, Firebase config (top of file)
-   - [MATCHING] → Category matching logic
-   - [THRESHOLDS] → Default low-stock threshold
-   ================================================================ */
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-  updateProfile
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDocs,
-  addDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  where,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 // ================================================================
-// [CONFIG] — Firebase & API configuration
+// PANTRY APP — app.js
+// All event wiring uses addEventListener, no inline onclick handlers.
 // ================================================================
 
+import { initializeApp }                  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+         createUserWithEmailAndPassword, signInWithPopup,
+         GoogleAuthProvider, signOut, updateProfile }
+                                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, doc, addDoc, updateDoc,
+         deleteDoc, onSnapshot, serverTimestamp }
+                                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ================================================================
+// [CONFIG] — swap keys / models here
+// ================================================================
 const firebaseConfig = {
   apiKey:            "AIzaSyBs4yuMJEOhVOZw8E_Ghnn7Y_jtsYxei38",
   authDomain:        "shop-list-web-app.firebaseapp.com",
@@ -46,35 +24,122 @@ const firebaseConfig = {
   appId:             "1:323355056685:web:41661b5d6b8da54fe4f6a4"
 };
 
-// API keys — only Gemini needed now
-// OCR is handled 100% in-browser by Tesseract.js (no key, no quota, no server)
-// PDF text extraction via pdf.js (also in-browser, no key)
-// AI parsing: Gemini 2.5 Flash Lite (text-only, cheap)
-const GEMINI_API_KEY  = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL    = 'gemini-2.5-flash-lite-preview-06-17';
+// OCR: Tesseract.js (runs in-browser, zero keys, zero quota)
+// PDF: pdf.js (in-browser, no key)
+// AI parsing: Gemini text-only (very few tokens per receipt)
+const GEMINI_API_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
+const GEMINI_MODEL   = 'gemini-2.5-flash-lite-preview-06-17';
 
-// [THRESHOLDS] — default "low" threshold for new items
+// [THRESHOLDS] — default "low stock" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
 
 // ================================================================
 // FIREBASE INIT
 // ================================================================
-const fbApp  = initializeApp(firebaseConfig);
-const auth   = getAuth(fbApp);
-const db     = getFirestore(fbApp);
+const fbApp          = initializeApp(firebaseConfig);
+const auth           = getAuth(fbApp);
+const db             = getFirestore(fbApp);
 const googleProvider = new GoogleAuthProvider();
 
 // ================================================================
 // APP STATE
 // ================================================================
-let currentUser  = null;
-let pantry       = [];   // local cache of Firestore docs
-let unsubPantry  = null; // Firestore real-time listener unsubscribe fn
-let reviewItems  = [];
+let currentUser    = null;
+let pantry         = [];
+let unsubPantry    = null;
+let reviewItems    = [];
 let checkedShopIds = new Set();
+let cameraStream   = null;
 
 // ================================================================
-// AUTH STATE OBSERVER
+// BOOT — wire all events once DOM is ready
+// ================================================================
+document.addEventListener('DOMContentLoaded', initEventListeners);
+
+function initEventListeners() {
+  // ---- Auth ----
+  on('btn-login',          'click', handleLogin);
+  on('btn-google-login',   'click', handleGoogleLogin);
+  on('btn-register',       'click', handleRegister);
+  on('btn-signout',        'click', handleSignOut);
+  on('link-to-register',   'click', (e) => { e.preventDefault(); switchAuth('register'); });
+  on('link-to-login',      'click', (e) => { e.preventDefault(); switchAuth('login'); });
+  on('login-password',     'keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+  on('reg-password',       'keydown', (e) => { if (e.key === 'Enter') handleRegister(); });
+
+  // ---- Nav tabs ----
+  on('tab-btn-scan',       'click', () => showTab('scan'));
+  on('tab-btn-inventory',  'click', () => showTab('inventory'));
+  on('tab-btn-shopping',   'click', () => showTab('shopping'));
+
+  // ---- User menu ----
+  on('user-chip',          'click', (e) => { e.stopPropagation(); toggleUserMenu(); });
+  document.addEventListener('click', () => hide('user-menu'));
+
+  // ---- Scan tab ----
+  on('btn-upload-file',    'click', () => document.getElementById('receipt-file').click());
+  on('btn-open-camera',    'click', openCamera);
+  on('receipt-file',       'change', (e) => { const f = e.target.files[0]; if (f) processReceiptFile(f); e.target.value = ''; });
+  on('camera-file',        'change', (e) => { const f = e.target.files[0]; if (f) processReceiptFile(f); e.target.value = ''; });
+  on('btn-clear-preview',  'click', clearPreview);
+  on('btn-capture',        'click', captureFromCamera);
+  on('btn-cancel-camera',  'click', closeCameraView);
+
+  const scanZone = document.getElementById('scan-zone');
+  scanZone.addEventListener('dragover',  (e) => { e.preventDefault(); scanZone.classList.add('drag-over'); });
+  scanZone.addEventListener('dragleave', ()  => scanZone.classList.remove('drag-over'));
+  scanZone.addEventListener('drop',      (e) => {
+    e.preventDefault(); scanZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) processReceiptFile(f);
+  });
+
+  // ---- Review panel ----
+  on('btn-add-review-row', 'click', addReviewRow);
+  on('btn-add-to-pantry',  'click', addReviewedItemsToPantry);
+  on('btn-cancel-review',  'click', clearReview);
+
+  // Event delegation for dynamic review delete buttons
+  document.getElementById('review-tbody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.row-delete-btn');
+    if (btn) removeReviewItem(parseInt(btn.dataset.idx, 10));
+  });
+
+  // ---- Inventory tab ----
+  on('btn-toggle-add-form',  'click', toggleAddForm);
+  on('btn-add-manual-item',  'click', addManualItem);
+  on('btn-cancel-add-form',  'click', toggleAddForm);
+  on('inventory-search',     'input', renderInventory);
+
+  // Event delegation for dynamic inventory grid (qty buttons, delete, threshold, category toggle)
+  document.getElementById('inventory-grid').addEventListener('click', (e) => {
+    const qtyBtn = e.target.closest('.qty-btn');
+    if (qtyBtn) { changeQty(qtyBtn.dataset.id, parseInt(qtyBtn.dataset.delta, 10)); return; }
+
+    const delBtn = e.target.closest('.item-delete-btn');
+    if (delBtn) { deleteItem(delBtn.dataset.id); return; }
+
+    const catHeader = e.target.closest('.category-header');
+    if (catHeader) { toggleCategory(catHeader.dataset.slug); return; }
+  });
+  document.getElementById('inventory-grid').addEventListener('change', (e) => {
+    if (e.target.classList.contains('threshold-input')) {
+      setThreshold(e.target.dataset.id, e.target.value);
+    }
+  });
+
+  // ---- Shopping tab ----
+  on('btn-clear-checked', 'click', () => { checkedShopIds.clear(); renderShopping(); });
+
+  // Event delegation for shop checkboxes
+  document.getElementById('shopping-list-content').addEventListener('click', (e) => {
+    const chk = e.target.closest('.shop-checkbox');
+    if (chk) toggleShopCheck(chk.dataset.id);
+  });
+}
+
+// ================================================================
+// AUTH
 // ================================================================
 onAuthStateChanged(auth, (user) => {
   if (user) {
@@ -89,17 +154,9 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// ================================================================
-// AUTH FUNCTIONS
-// ================================================================
-window.switchAuth = (mode) => {
-  document.getElementById('auth-login').classList.toggle('active',    mode === 'login');
-  document.getElementById('auth-register').classList.toggle('active', mode === 'register');
-};
-
-window.handleLogin = async () => {
-  const email    = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
+async function handleLogin() {
+  const email    = val('login-email');
+  const password = val('login-password');
   const errEl    = document.getElementById('auth-error');
   errEl.style.display = 'none';
   try {
@@ -108,12 +165,12 @@ window.handleLogin = async () => {
     errEl.textContent = friendlyAuthError(e.code);
     errEl.style.display = 'block';
   }
-};
+}
 
-window.handleRegister = async () => {
-  const name     = document.getElementById('reg-name').value.trim();
-  const email    = document.getElementById('reg-email').value.trim();
-  const password = document.getElementById('reg-password').value;
+async function handleRegister() {
+  const name     = val('reg-name');
+  const email    = val('reg-email');
+  const password = val('reg-password');
   const errEl    = document.getElementById('reg-error');
   errEl.style.display = 'none';
   try {
@@ -123,9 +180,9 @@ window.handleRegister = async () => {
     errEl.textContent = friendlyAuthError(e.code);
     errEl.style.display = 'block';
   }
-};
+}
 
-window.handleGoogleLogin = async () => {
+async function handleGoogleLogin() {
   try {
     await signInWithPopup(auth, googleProvider);
   } catch (e) {
@@ -133,229 +190,179 @@ window.handleGoogleLogin = async () => {
     errEl.textContent = friendlyAuthError(e.code);
     errEl.style.display = 'block';
   }
-};
+}
 
-window.handleSignOut = async () => {
+async function handleSignOut() {
   await signOut(auth);
-  toggleUserMenu(true);
-};
+  hide('user-menu');
+}
+
+function switchAuth(mode) {
+  document.getElementById('auth-login').classList.toggle('active',    mode === 'login');
+  document.getElementById('auth-register').classList.toggle('active', mode === 'register');
+}
 
 function friendlyAuthError(code) {
   const map = {
-    'auth/invalid-email':          'Invalid email address.',
-    'auth/user-not-found':         'No account found with that email.',
-    'auth/wrong-password':         'Incorrect password.',
-    'auth/email-already-in-use':   'That email is already registered.',
-    'auth/weak-password':          'Password must be at least 6 characters.',
-    'auth/popup-closed-by-user':   'Google sign-in was cancelled.',
-    'auth/invalid-credential':     'Incorrect email or password.',
-    'auth/too-many-requests':      'Too many attempts. Please try again later.',
+    'auth/invalid-email':        'Invalid email address.',
+    'auth/user-not-found':       'No account found with that email.',
+    'auth/wrong-password':       'Incorrect password.',
+    'auth/email-already-in-use': 'That email is already registered.',
+    'auth/weak-password':        'Password must be at least 6 characters.',
+    'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
+    'auth/invalid-credential':   'Incorrect email or password.',
+    'auth/too-many-requests':    'Too many attempts. Please try again later.',
   };
   return map[code] || 'Authentication error. Please try again.';
 }
 
 function showApp(user) {
-  document.getElementById('auth-screen').style.display = 'none';
+  hide('auth-screen');
   document.getElementById('app').style.display = 'block';
-  // Set user info in nav
   const initials = (user.displayName || user.email || '?').charAt(0).toUpperCase();
-  document.getElementById('user-avatar').textContent       = initials;
-  document.getElementById('user-name-nav').textContent     = user.displayName || user.email.split('@')[0];
-  document.getElementById('user-menu-email').textContent   = user.email;
+  document.getElementById('user-avatar').textContent     = initials;
+  document.getElementById('user-name-nav').textContent   = user.displayName || user.email.split('@')[0];
+  document.getElementById('user-menu-email').textContent = user.email;
 }
 
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
+  hide('app');
 }
 
-window.toggleUserMenu = (forceClose) => {
+function toggleUserMenu() {
   const menu = document.getElementById('user-menu');
-  if (forceClose) { menu.style.display = 'none'; return; }
   menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-};
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.nav-right')) {
-    document.getElementById('user-menu').style.display = 'none';
-  }
-});
+}
 
 // ================================================================
-// FIRESTORE — pantry collection per user
+// FIRESTORE
 // ================================================================
-function pantryCollection(uid) {
-  return collection(db, 'users', uid, 'pantry');
-}
+function pantryCol(uid) { return collection(db, 'users', uid, 'pantry'); }
 
 function subscribeToUserPantry(uid) {
   if (unsubPantry) unsubPantry();
-  const col = pantryCollection(uid);
-  unsubPantry = onSnapshot(col, (snapshot) => {
-    pantry = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+  unsubPantry = onSnapshot(pantryCol(uid), (snap) => {
+    pantry = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderInventory();
     renderShopping();
     updateCategoryDatalist();
     updateSubtitle();
     setSyncIndicator('Synced');
-  }, (err) => {
-    console.error('Firestore error:', err);
-    setSyncIndicator('Sync error');
-  });
+  }, (err) => { console.error(err); setSyncIndicator('Sync error'); });
 }
 
-async function fsAddItem(item) {
+async function fsAdd(item) {
   if (!currentUser) return;
   setSyncIndicator('Saving…');
   try {
-    const ref = await addDoc(pantryCollection(currentUser.uid), {
-      ...item,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    return ref.id;
-  } catch (e) { console.error('Add error:', e); toast('Error saving item'); }
+    return await addDoc(pantryCol(currentUser.uid), { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  } catch (e) { console.error(e); toast('Error saving item'); }
 }
 
-async function fsUpdateItem(id, updates) {
+async function fsUpdate(id, updates) {
   if (!currentUser) return;
   setSyncIndicator('Saving…');
   try {
-    await updateDoc(doc(db, 'users', currentUser.uid, 'pantry', id), {
-      ...updates,
-      updatedAt: serverTimestamp()
-    });
-  } catch (e) { console.error('Update error:', e); toast('Error updating item'); }
+    await updateDoc(doc(db, 'users', currentUser.uid, 'pantry', id), { ...updates, updatedAt: serverTimestamp() });
+  } catch (e) { console.error(e); toast('Error updating item'); }
 }
 
-async function fsDeleteItem(id) {
+async function fsDel(id) {
   if (!currentUser) return;
   setSyncIndicator('Saving…');
   try {
     await deleteDoc(doc(db, 'users', currentUser.uid, 'pantry', id));
-  } catch (e) { console.error('Delete error:', e); toast('Error deleting item'); }
+  } catch (e) { console.error(e); toast('Error deleting item'); }
 }
 
 // ================================================================
 // TAB NAVIGATION
 // ================================================================
-window.showTab = (tab, btn) => {
+function showTab(tab) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  if (btn) btn.classList.add('active');
+  document.getElementById('tab-btn-' + tab).classList.add('active');
   if (tab === 'inventory') renderInventory();
   if (tab === 'shopping')  renderShopping();
-};
+}
 
 // ================================================================
-// FILE / RECEIPT HANDLING — images, PDFs, and live camera
+// CAMERA
 // ================================================================
-window.dragOver = (e) => { e.preventDefault(); document.getElementById('scan-zone').classList.add('drag-over'); };
-window.dragLeave = ()  => { document.getElementById('scan-zone').classList.remove('drag-over'); };
-window.dropFile  = (e) => {
-  e.preventDefault();
-  document.getElementById('scan-zone').classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) processReceiptFile(file);
-};
-window.handleFileSelect = (e) => {
-  const file = e.target.files[0];
-  if (file) processReceiptFile(file);
-  e.target.value = '';
-};
-window.clearPreview = () => {
-  document.getElementById('scan-preview-wrap').style.display = 'none';
-  document.getElementById('scan-preview-img').src = '';
-};
-
-// ---- CAMERA ----
-let cameraStream = null;
-
-window.openCamera = async () => {
-  // On mobile, prefer the native capture input (simpler UX)
+function openCamera() {
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-  if (isMobile) {
-    document.getElementById('camera-file').click();
-    return;
-  }
-  // Desktop: open in-page live camera view
-  const view = document.getElementById('camera-view');
+  if (isMobile) { document.getElementById('camera-file').click(); return; }
   const video = document.getElementById('camera-video');
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-    video.srcObject = cameraStream;
-    view.style.display = 'block';
-  } catch (err) {
-    // Permission denied or no camera — fall back to file picker
-    toast('Camera not available, using file picker');
-    document.getElementById('camera-file').click();
-  }
-};
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    .then(stream => {
+      cameraStream = stream;
+      video.srcObject = stream;
+      document.getElementById('camera-view').style.display = 'block';
+    })
+    .catch(() => {
+      toast('Camera unavailable — opening file picker');
+      document.getElementById('camera-file').click();
+    });
+}
 
-window.closeCameraView = () => {
+function closeCameraView() {
   if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
-  document.getElementById('camera-view').style.display = 'none';
-};
+  hide('camera-view');
+}
 
-window.captureFromCamera = () => {
+function captureFromCamera() {
   const video  = document.getElementById('camera-video');
   const canvas = document.getElementById('camera-canvas');
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
   closeCameraView();
-  canvas.toBlob((blob) => {
-    const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
-    processReceiptFile(file);
-  }, 'image/jpeg', 0.92);
-};
+  canvas.toBlob(blob => processReceiptFile(new File([blob], 'capture.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.92);
+}
 
-// ---- PROCESS FILE ----
+// ================================================================
+// RECEIPT PROCESSING
+// ================================================================
 async function processReceiptFile(file) {
   const isPDF = file.type === 'application/pdf';
 
-  // Show preview
-  const previewWrap = document.getElementById('scan-preview-wrap');
-  const previewImg  = document.getElementById('scan-preview-img');
+  // Preview
+  const previewImg = document.getElementById('scan-preview-img');
   if (isPDF) {
     previewImg.src = 'data:image/svg+xml,' + encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130" viewBox="0 0 240 130">
         <rect width="240" height="130" rx="8" fill="#1A1814"/>
         <text x="120" y="58" font-family="sans-serif" font-size="32" fill="#C8954A" text-anchor="middle">📄</text>
-        <text x="120" y="86" font-family="sans-serif" font-size="13" fill="#9A8F82" text-anchor="middle">PDF — ${file.name}</text>
+        <text x="120" y="86" font-family="sans-serif" font-size="13" fill="#9A8F82" text-anchor="middle">${esc(file.name)}</text>
       </svg>`);
-    previewWrap.style.display = 'block';
   } else {
     const reader = new FileReader();
-    reader.onload = (e) => { previewImg.src = e.target.result; previewWrap.style.display = 'block'; };
+    reader.onload = e => { previewImg.src = e.target.result; };
     reader.readAsDataURL(file);
   }
+  document.getElementById('scan-preview-wrap').style.display = 'block';
 
-  showStatus('info', isPDF ? '📄 Reading PDF receipt…' : '🔍 Reading receipt image…');
-  showProcessing(true, 'Preparing file…');
+  showStatus('info', isPDF ? '📄 Reading PDF…' : '🔍 Reading image…');
+  showProcessing(true, 'Preparing…');
 
   try {
     let rawText = '';
-
     if (isPDF) {
-      showProcessingMsg('Extracting text from PDF…');
+      showProcessingMsg('Extracting PDF text…');
       rawText = await extractTextFromPDF(file);
-      if (!rawText.trim()) throw new Error('No readable text in PDF — is it a scanned image PDF?');
+      if (!rawText.trim()) throw new Error('No readable text in PDF — is it a scanned image?');
     } else {
-      // Tesseract.js runs entirely in-browser — no API key, no quota
       showProcessingMsg('Loading OCR engine… (first run ~10s)');
-      rawText = await ocrWithTesseract(file, (msg) => showProcessingMsg(msg));
+      rawText = await ocrWithTesseract(file, msg => showProcessingMsg(msg));
       if (!rawText.trim()) throw new Error('OCR found no text — try a clearer, well-lit photo');
     }
 
-    showProcessingMsg('Parsing items with Gemini…');
+    showProcessingMsg('Parsing items with AI…');
     const items = await parseReceiptTextWithGemini(rawText);
 
     showProcessing(false);
-    if (items.length === 0) {
-      showStatus('error', '✕ No grocery items found — try a clearer photo');
-      return;
-    }
+    if (!items.length) { showStatus('error', '✕ No grocery items found — try a clearer photo'); return; }
     showStatus('success', `✓ Found ${items.length} item${items.length !== 1 ? 's' : ''}`);
     reviewItems = matchItemsToPantry(items);
     renderReview();
@@ -366,49 +373,46 @@ async function processReceiptFile(file) {
   }
 }
 
+function clearPreview() {
+  hide('scan-preview-wrap');
+  document.getElementById('scan-preview-img').src = '';
+}
+
 // ================================================================
-// STEP 1a — Tesseract.js in-browser OCR (zero API keys, zero quota)
-// Loads once from CDN, then runs entirely in a local Web Worker
+// OCR — Tesseract.js (fully in-browser, no API key)
 // ================================================================
 async function ocrWithTesseract(imageFile, onProgress) {
   if (!window.Tesseract) {
     onProgress('Loading OCR engine…');
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
   }
-  // Resize for good OCR accuracy without being huge
   const blob = await resizeForOCR(imageFile);
   const url  = URL.createObjectURL(blob);
   try {
     const result = await Tesseract.recognize(url, 'eng', {
-      logger: (m) => {
-        if      (m.status === 'recognizing text')          onProgress(`OCR in progress… ${Math.round((m.progress||0)*100)}%`);
-        else if (m.status === 'loading tesseract core')    onProgress('Loading OCR engine…');
-        else if (m.status === 'initializing tesseract')    onProgress('Initializing OCR…');
+      logger: m => {
+        if      (m.status === 'recognizing text')             onProgress(`OCR ${Math.round((m.progress||0)*100)}%…`);
+        else if (m.status === 'loading tesseract core')       onProgress('Loading OCR engine…');
+        else if (m.status === 'initializing tesseract')       onProgress('Initializing OCR…');
         else if (m.status === 'loading language traineddata') onProgress('Loading language data…');
       }
     });
     return result.data.text || '';
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  } finally { URL.revokeObjectURL(url); }
 }
 
 function resizeForOCR(file) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
+  return new Promise(resolve => {
+    const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const MAX = 2000;
       let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        const r = Math.min(MAX/w, MAX/h);
-        w = Math.round(w*r); h = Math.round(h*r);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob((blob) => resolve(blob || file), 'image/png');
+      const MAX = 2000;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob(b => resolve(b || file), 'image/png');
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
@@ -416,7 +420,7 @@ function resizeForOCR(file) {
 }
 
 // ================================================================
-// STEP 1b — Extract text from PDF using pdf.js (CDN, no key)
+// PDF TEXT EXTRACTION — pdf.js (in-browser, no key)
 // ================================================================
 async function extractTextFromPDF(file) {
   if (!window.pdfjsLib) {
@@ -424,15 +428,13 @@ async function extractTextFromPDF(file) {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   }
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  let fullText = '';
+  const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  let text = '';
   for (let i = 1; i <= pdf.numPages; i++) {
-    const page    = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    fullText += content.items.map(item => item.str).join(' ') + '\n';
+    const content = await (await pdf.getPage(i)).getTextContent();
+    text += content.items.map(x => x.str).join(' ') + '\n';
   }
-  return fullText;
+  return text;
 }
 
 function loadScript(src) {
@@ -445,426 +447,279 @@ function loadScript(src) {
 }
 
 // ================================================================
-// STEP 2 — Parse raw OCR/PDF text → structured items via Gemini
-// Text-only request — uses very few tokens, well within free tier
+// AI PARSING — Gemini (text-only, minimal tokens)
 // ================================================================
 async function parseReceiptTextWithGemini(rawText) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
+Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty>"}
+Skip: taxes, totals, fees, store info, dates. Fix ALL-CAPS abbreviations. Default qty=1.
 
-  const prompt = `You are a grocery receipt parser. Below is raw OCR text from a grocery receipt. Extract all food/grocery items.
-
-Return ONLY a raw JSON array — no markdown, no explanation. Each element:
-{"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
-
-Rules:
-- SKIP taxes, totals, subtotals, fees, store name, phone, dates, cashier lines
-- Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" → "Orange Juice")
-- If quantity shown (e.g. "2 @ $1.99") set qty = 2
-- Default qty = 1 if unclear
-- unit: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string
-- Return ONLY the JSON array
-
-Receipt text:
+Receipt:
 ${rawText.slice(0, 4000)}`;
 
   const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
-    })
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 2048 } })
   });
-
   if (!resp.ok) {
     const e = await resp.json().catch(() => ({}));
-    throw new Error(e?.error?.message || `Gemini API error ${resp.status}`);
+    throw new Error(e?.error?.message || `Gemini error ${resp.status}`);
   }
-
-  const data    = await resp.json();
-  const text    = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const clean   = text.replace(/```json|```/gi, '').trim();
-  const match   = clean.match(/\[[\s\S]*\]/);
-  const jsonStr = match ? match[0] : clean;
-
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const match = text.replace(/```json|```/gi, '').trim().match(/\[[\s\S]*\]/);
   try {
-    const parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) throw new Error('Not an array');
-    return parsed.filter(i => i.name && String(i.name).trim().length > 0);
-  } catch {
-    console.error('Gemini raw response:', text);
-    throw new Error('AI parsing failed — try a clearer photo');
-  }
-}
-
-
-  const data  = await resp.json();
-  const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const clean = text.replace(/```json|```/gi, '').trim();
-  const match = clean.match(/\[[\s\S]*\]/);
-  const jsonStr = match ? match[0] : clean;
-
-  try {
-    const parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) throw new Error('Not an array');
-    return parsed.filter(i => i.name && String(i.name).trim().length > 0);
-  } catch {
-    console.error('Gemini raw response:', text);
-    throw new Error('AI parsing failed — try a clearer photo');
-  }
+    const parsed = JSON.parse(match ? match[0] : text);
+    if (!Array.isArray(parsed)) throw new Error();
+    return parsed.filter(i => i.name?.trim());
+  } catch { throw new Error('AI returned unexpected format — try a clearer photo'); }
 }
 
 // ================================================================
-// [MATCHING] — Smart category matching
-// Modify this function to change how scanned items map to categories
+// [MATCHING] — Category matching logic
 // ================================================================
 function matchItemsToPantry(rawItems) {
-  const existingCategories = [...new Set(pantry.map(p => p.category))];
-
+  const cats = [...new Set(pantry.map(p => p.category))];
   return rawItems.map(item => {
-    const nameLower = item.name.toLowerCase().trim();
+    const nl = item.name.toLowerCase().trim();
+    const exact = pantry.find(p => p.name.toLowerCase() === nl);
+    if (exact) return { ...item, suggestedCategory: exact.category, matchType: 'existing-item' };
 
-    // 1. Exact name match in pantry → use that item's category
-    const exactName = pantry.find(p => p.name.toLowerCase() === nameLower);
-    if (exactName) {
-      return { ...item, suggestedCategory: exactName.category, matchType: 'existing-item' };
-    }
-
-    // 2. Item name contains an existing category (longest match wins)
-    //    e.g. "ice cream sandwich" contains "ice cream" → Ice Cream category
     let bestCat = null, bestLen = 0;
-    for (const cat of existingCategories) {
+    for (const cat of cats) {
       const cl = cat.toLowerCase();
-      if (nameLower.includes(cl) && cl.length > bestLen) {
-        bestCat = cat;
-        bestLen = cl.length;
-      }
+      if (nl.includes(cl) && cl.length > bestLen) { bestCat = cat; bestLen = cl.length; }
     }
     if (bestCat) return { ...item, suggestedCategory: bestCat, matchType: 'category-match' };
 
-    // 3. Existing category name is a significant sub-word of the new item
-    //    e.g. "yogurt strawberry" matches category "Yogurt"
-    for (const cat of existingCategories) {
-      const words = cat.toLowerCase().split(/\s+/);
-      if (words.some(w => w.length >= 4 && nameLower.includes(w))) {
+    for (const cat of cats) {
+      if (cat.toLowerCase().split(/\s+/).some(w => w.length >= 4 && nl.includes(w)))
         return { ...item, suggestedCategory: cat, matchType: 'word-match' };
-      }
     }
 
-    // 4. No match → new category = title-cased item name
-    const titleName = item.name.split(' ')
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ');
-    return { ...item, suggestedCategory: titleName, matchType: 'new' };
+    const title = item.name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return { ...item, suggestedCategory: title, matchType: 'new' };
   });
 }
 
 // ================================================================
 // REVIEW PANEL
 // ================================================================
-window.addReviewRow = () => {
+function addReviewRow() {
   reviewItems.push({ name: '', qty: 1, unit: '', suggestedCategory: '', matchType: 'new' });
   renderReview();
-  // Focus last name input
   setTimeout(() => {
     const rows = document.querySelectorAll('#review-tbody tr');
     if (rows.length) rows[rows.length - 1].querySelector('input')?.focus();
   }, 50);
-};
+}
 
-window.removeReviewItem = (i) => {
+function removeReviewItem(i) {
   reviewItems.splice(i, 1);
-  if (reviewItems.length === 0) clearReview();
-  else renderReview();
-};
+  if (!reviewItems.length) clearReview(); else renderReview();
+}
 
-window.clearReview = () => {
+function clearReview() {
   reviewItems = [];
-  document.getElementById('receipt-review').style.display = 'none';
+  hide('receipt-review');
   document.getElementById('review-tbody').innerHTML = '';
-};
+}
 
 function renderReview() {
-  const tbody  = document.getElementById('review-tbody');
-  const panel  = document.getElementById('receipt-review');
-  panel.style.display = 'block';
-
-  tbody.innerHTML = reviewItems.map((item, i) => `
+  document.getElementById('receipt-review').style.display = 'block';
+  document.getElementById('review-tbody').innerHTML = reviewItems.map((item, i) => `
     <tr>
       <td><input type="text"   id="ri-name-${i}" value="${esc(item.name)}"              placeholder="Item name"  list="category-names-list"></td>
       <td><input type="text"   id="ri-cat-${i}"  value="${esc(item.suggestedCategory)}" placeholder="Category"   list="category-datalist"></td>
       <td><input type="number" id="ri-qty-${i}"  value="${item.qty}"   min="0" step="0.5" style="width:65px"></td>
-      <td><input type="text"   id="ri-unit-${i}" value="${esc(item.unit || '')}"         placeholder="qty" style="width:70px"></td>
+      <td><input type="text"   id="ri-unit-${i}" value="${esc(item.unit||'')}"           placeholder="qty"        style="width:70px"></td>
       <td><span class="match-badge ${item.matchType === 'new' ? 'match-new' : 'match-existing'}">${item.matchType === 'new' ? '+ New' : '↩ Match'}</span></td>
-      <td><button class="row-delete-btn" onclick="removeReviewItem(${i})" title="Remove">✕</button></td>
-    </tr>
-  `).join('');
+      <td><button class="row-delete-btn" data-idx="${i}" title="Remove">✕</button></td>
+    </tr>`).join('');
 }
 
-window.addReviewedItemsToPantry = async () => {
-  const rows = document.querySelectorAll('#review-tbody tr');
+async function addReviewedItemsToPantry() {
   const toAdd = [];
-
-  rows.forEach((_, i) => {
+  reviewItems.forEach((_, i) => {
     const name     = document.getElementById(`ri-name-${i}`)?.value?.trim();
-    const category = document.getElementById(`ri-cat-${i}`)?.value?.trim()  || name;
-    const qty      = parseFloat(document.getElementById(`ri-qty-${i}`)?.value)  || 1;
+    const category = document.getElementById(`ri-cat-${i}`)?.value?.trim() || name;
+    const qty      = parseFloat(document.getElementById(`ri-qty-${i}`)?.value) || 1;
     const unit     = document.getElementById(`ri-unit-${i}`)?.value?.trim() || '';
-    if (!name) return;
-    toAdd.push({ name, category, qty, unit });
+    if (name) toAdd.push({ name, category, qty, unit });
   });
 
-  showProcessing(true, 'Adding items to pantry…');
-
+  showProcessing(true, 'Adding to pantry…');
   for (const item of toAdd) {
     const existing = pantry.find(p => p.name.toLowerCase() === item.name.toLowerCase());
-    if (existing) {
-      await fsUpdateItem(existing.id, { qty: (existing.qty || 0) + item.qty });
-    } else {
-      await fsAddItem({
-        name:      item.name,
-        category:  item.category,
-        qty:       item.qty,
-        unit:      item.unit,
-        threshold: DEFAULT_LOW_THRESHOLD
-      });
-    }
+    if (existing) await fsUpdate(existing.id, { qty: (existing.qty || 0) + item.qty });
+    else          await fsAdd({ name: item.name, category: item.category, qty: item.qty, unit: item.unit, threshold: DEFAULT_LOW_THRESHOLD });
   }
-
   showProcessing(false);
   clearReview();
   clearPreview();
   showStatus('success', `✓ ${toAdd.length} item${toAdd.length !== 1 ? 's' : ''} added to pantry`);
-  toast(`${toAdd.length} items added to pantry`);
-};
+  toast(`${toAdd.length} items added`);
+}
 
 // ================================================================
-// INVENTORY RENDERING
+// INVENTORY
 // ================================================================
 function renderInventory() {
   const search = (document.getElementById('inventory-search')?.value || '').toLowerCase();
   const grid   = document.getElementById('inventory-grid');
   if (!grid) return;
 
-  if (pantry.length === 0) {
-    grid.innerHTML = `<div class="empty-state">
-      <div class="empty-state-icon">🥫</div>
-      <h3>Your pantry is empty</h3>
-      <p>Scan a receipt or add items manually to get started</p>
-    </div>`;
-    updateSubtitle();
-    return;
+  if (!pantry.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🥫</div><h3>Your pantry is empty</h3><p>Scan a receipt or add items manually</p></div>`;
+    updateSubtitle(); return;
   }
 
-  const filtered = search
-    ? pantry.filter(p => p.name.toLowerCase().includes(search) || p.category.toLowerCase().includes(search))
-    : pantry;
+  const filtered = search ? pantry.filter(p =>
+    p.name.toLowerCase().includes(search) || p.category.toLowerCase().includes(search)) : pantry;
 
-  if (filtered.length === 0) {
+  if (!filtered.length) {
     grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔍</div><h3>No results</h3><p>Try a different search</p></div>`;
     return;
   }
 
-  // Group by category
   const groups = {};
-  filtered.forEach(item => {
-    const cat = item.category || 'Uncategorised';
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(item);
-  });
+  filtered.forEach(item => { (groups[item.category || 'Uncategorised'] ??= []).push(item); });
 
-  grid.innerHTML = Object.entries(groups)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([cat, items]) => `
-      <div class="category-section" id="cat-${slugify(cat)}">
-        <div class="category-header" onclick="toggleCategory('${slugify(cat)}')">
-          <span class="category-name">${esc(cat)}</span>
-          <span class="category-count">${items.length}</span>
-          <span class="category-chevron">▾</span>
-        </div>
-        <div class="items-grid">
-          ${items.map(renderItemCard).join('')}
-        </div>
+  grid.innerHTML = Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([cat, items]) => `
+    <div class="category-section" id="cat-${slugify(cat)}">
+      <div class="category-header" data-slug="${slugify(cat)}">
+        <span class="category-name">${esc(cat)}</span>
+        <span class="category-count">${items.length}</span>
+        <span class="category-chevron">▾</span>
       </div>
-    `).join('');
+      <div class="items-grid">${items.map(renderItemCard).join('')}</div>
+    </div>`).join('');
 
   updateSubtitle();
 }
 
 function renderItemCard(item) {
-  const qty       = item.qty ?? 0;
-  const threshold = item.threshold ?? DEFAULT_LOW_THRESHOLD;
-  const status    = qty <= 0 ? 'out' : qty <= threshold ? 'low' : 'good';
-
+  const qty = item.qty ?? 0, thr = item.threshold ?? DEFAULT_LOW_THRESHOLD;
+  const status = qty <= 0 ? 'out' : qty <= thr ? 'low' : 'good';
   return `<div class="item-card" data-status="${status}" id="icard-${item.id}">
     <div class="item-name">${esc(item.name)}</div>
     <div class="item-qty-row">
-      <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
+      <button class="qty-btn" data-id="${item.id}" data-delta="-1">−</button>
       <span class="qty-display">${formatQty(qty)}</span>
-      <button class="qty-btn" onclick="changeQty('${item.id}', 1)">+</button>
+      <button class="qty-btn" data-id="${item.id}" data-delta="1">+</button>
       ${item.unit ? `<span class="qty-unit">${esc(item.unit)}</span>` : ''}
     </div>
     <div class="item-threshold-row">
       <span class="threshold-label">Low alert at</span>
-      <input class="threshold-input" type="number" value="${threshold}" min="0" step="0.5"
-        onchange="setThreshold('${item.id}', this.value)" title="Low threshold">
+      <input class="threshold-input" type="number" value="${thr}" min="0" step="0.5" data-id="${item.id}" title="Low threshold">
     </div>
-    <button class="item-delete-btn" onclick="deleteItem('${item.id}')" title="Delete">✕</button>
+    <button class="item-delete-btn" data-id="${item.id}" title="Delete">✕</button>
   </div>`;
 }
 
-window.toggleCategory = (slug) => {
+function toggleCategory(slug) {
   document.getElementById('cat-' + slug)?.classList.toggle('collapsed');
-};
+}
 
-window.changeQty = async (id, delta) => {
+async function changeQty(id, delta) {
   const item = pantry.find(p => p.id === id);
   if (!item) return;
   const newQty = Math.max(0, (item.qty ?? 0) + delta);
-  // Optimistic local update
   item.qty = newQty;
   const card = document.getElementById('icard-' + id);
   if (card) {
-    const threshold = item.threshold ?? DEFAULT_LOW_THRESHOLD;
-    const status    = newQty <= 0 ? 'out' : newQty <= threshold ? 'low' : 'good';
-    card.dataset.status = status;
+    const thr = item.threshold ?? DEFAULT_LOW_THRESHOLD;
+    card.dataset.status = newQty <= 0 ? 'out' : newQty <= thr ? 'low' : 'good';
     card.querySelector('.qty-display').textContent = formatQty(newQty);
   }
-  await fsUpdateItem(id, { qty: newQty });
-};
+  await fsUpdate(id, { qty: newQty });
+}
 
-window.setThreshold = async (id, val) => {
+async function setThreshold(id, val) {
   const item = pantry.find(p => p.id === id);
   if (!item) return;
-  const threshold = Math.max(0, parseFloat(val) || 0);
-  item.threshold  = threshold;
-  await fsUpdateItem(id, { threshold });
+  item.threshold = Math.max(0, parseFloat(val) || 0);
+  await fsUpdate(id, { threshold: item.threshold });
   renderInventory();
-};
+}
 
-window.deleteItem = async (id) => {
-  await fsDeleteItem(id);
+async function deleteItem(id) {
+  await fsDel(id);
   toast('Item removed');
-};
+}
 
-// ================================================================
-// MANUAL ADD
-// ================================================================
-window.toggleAddForm = () => {
+function toggleAddForm() {
   document.getElementById('add-item-form').classList.toggle('open');
-};
+}
 
-window.addManualItem = async () => {
-  const name      = document.getElementById('new-item-name').value.trim();
-  const category  = document.getElementById('new-item-category').value.trim() || name;
-  const qty       = parseFloat(document.getElementById('new-item-qty').value)       || 0;
-  const unit      = document.getElementById('new-item-unit').value.trim();
+async function addManualItem() {
+  const name      = val('new-item-name');
+  const category  = val('new-item-category') || name;
+  const qty       = parseFloat(document.getElementById('new-item-qty').value) || 0;
+  const unit      = val('new-item-unit');
   const threshold = parseFloat(document.getElementById('new-item-threshold').value) || DEFAULT_LOW_THRESHOLD;
 
   if (!name) { toast('Please enter an item name'); return; }
 
   const existing = pantry.find(p => p.name.toLowerCase() === name.toLowerCase());
-  if (existing) {
-    await fsUpdateItem(existing.id, { qty: (existing.qty || 0) + qty });
-    toast(`Updated ${name}`);
-  } else {
-    await fsAddItem({ name, category, qty, unit, threshold });
-    toast(`Added ${name}`);
-  }
+  if (existing) { await fsUpdate(existing.id, { qty: (existing.qty || 0) + qty }); toast(`Updated ${name}`); }
+  else          { await fsAdd({ name, category, qty, unit, threshold }); toast(`Added ${name}`); }
 
-  // Reset form
   ['new-item-name','new-item-category','new-item-unit'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('new-item-qty').value       = '1';
   document.getElementById('new-item-threshold').value = '1';
   document.getElementById('add-item-form').classList.remove('open');
-};
+}
 
 // ================================================================
-// SHOPPING MODE
+// SHOPPING
 // ================================================================
 function renderShopping() {
   const container = document.getElementById('shopping-list-content');
   if (!container) return;
-
   const outItems = pantry.filter(p => (p.qty ?? 0) <= 0);
-  const lowItems = pantry.filter(p => {
-    const qty = p.qty ?? 0;
-    const thr = p.threshold ?? DEFAULT_LOW_THRESHOLD;
-    return qty > 0 && qty <= thr;
-  });
+  const lowItems = pantry.filter(p => { const q = p.qty??0, t = p.threshold??DEFAULT_LOW_THRESHOLD; return q>0 && q<=t; });
 
-  if (outItems.length === 0 && lowItems.length === 0) {
-    container.innerHTML = `<div class="shop-empty">
-      <div class="shop-empty-icon">🎉</div>
-      <h3>All stocked up!</h3>
-      <p>No items are low or out of stock right now</p>
-    </div>`;
+  if (!outItems.length && !lowItems.length) {
+    container.innerHTML = `<div class="shop-empty"><div class="shop-empty-icon">🎉</div><h3>All stocked up!</h3><p>No items are low or out of stock</p></div>`;
     return;
   }
 
   let html = '';
-
-  if (outItems.length > 0) {
-    html += `<div class="shop-section">
-      <div class="shop-section-heading">
-        <span class="shop-section-label urgent">Out of Stock</span>
-        <span class="shop-section-count">${outItems.length}</span>
-      </div>
-      ${outItems.sort((a,b) => a.name.localeCompare(b.name)).map(i => shopItemHTML(i, 'out')).join('')}
-    </div>`;
+  if (outItems.length) {
+    html += `<div class="shop-section"><div class="shop-section-heading"><span class="shop-section-label urgent">Out of Stock</span><span class="shop-section-count">${outItems.length}</span></div>
+    ${outItems.sort((a,b)=>a.name.localeCompare(b.name)).map(i=>shopItemHTML(i,'out')).join('')}</div>`;
   }
-
-  if (lowItems.length > 0) {
-    const sorted = [...lowItems].sort((a, b) => {
-      const ra = (a.qty ?? 0) / (a.threshold || 1);
-      const rb = (b.qty ?? 0) / (b.threshold || 1);
-      return ra - rb;
-    });
-    html += `<div class="shop-section">
-      <div class="shop-section-heading">
-        <span class="shop-section-label warn">Running Low</span>
-        <span class="shop-section-count">${sorted.length}</span>
-      </div>
-      ${sorted.map(i => shopItemHTML(i, 'low')).join('')}
-    </div>`;
+  if (lowItems.length) {
+    const sorted = [...lowItems].sort((a,b) => (a.qty??0)/(a.threshold||1) - (b.qty??0)/(b.threshold||1));
+    html += `<div class="shop-section"><div class="shop-section-heading"><span class="shop-section-label warn">Running Low</span><span class="shop-section-count">${sorted.length}</span></div>
+    ${sorted.map(i=>shopItemHTML(i,'low')).join('')}</div>`;
   }
-
   container.innerHTML = html;
 }
 
 function shopItemHTML(item, urgency) {
   const checked = checkedShopIds.has(item.id);
-  const qty     = item.qty ?? 0;
-  const detail  = urgency === 'out'
+  const qty = item.qty ?? 0;
+  const detail = urgency === 'out'
     ? `Out of stock · ${esc(item.category)}`
-    : `${formatQty(qty)}${item.unit ? ' ' + esc(item.unit) : ''} remaining · low at ${item.threshold ?? DEFAULT_LOW_THRESHOLD}`;
-
-  return `<div class="shop-item ${checked ? 'is-checked' : ''}" id="shoprow-${item.id}">
-    <div class="shop-checkbox ${checked ? 'is-checked' : ''}" id="shopchk-${item.id}"
-         onclick="toggleShopCheck('${item.id}')">${checked ? '✓' : ''}</div>
-    <div class="shop-item-info">
-      <div class="shop-item-name">${esc(item.name)}</div>
-      <div class="shop-item-detail">${detail}</div>
-    </div>
-    <span class="urgency-pill ${urgency === 'out' ? 'urgency-out' : 'urgency-low'}">
-      ${urgency === 'out' ? 'Out' : 'Low'}
-    </span>
+    : `${formatQty(qty)}${item.unit ? ' '+esc(item.unit) : ''} left · low at ${item.threshold ?? DEFAULT_LOW_THRESHOLD}`;
+  return `<div class="shop-item ${checked?'is-checked':''}" id="shoprow-${item.id}">
+    <div class="shop-checkbox ${checked?'is-checked':''}" data-id="${item.id}">${checked?'✓':''}</div>
+    <div class="shop-item-info"><div class="shop-item-name">${esc(item.name)}</div><div class="shop-item-detail">${detail}</div></div>
+    <span class="urgency-pill ${urgency==='out'?'urgency-out':'urgency-low'}">${urgency==='out'?'Out':'Low'}</span>
   </div>`;
 }
 
-window.toggleShopCheck = (id) => {
+function toggleShopCheck(id) {
   const was = checkedShopIds.has(id);
   was ? checkedShopIds.delete(id) : checkedShopIds.add(id);
   const row = document.getElementById('shoprow-' + id);
-  const chk = document.getElementById('shopchk-' + id);
+  const chk = row?.querySelector('.shop-checkbox');
   if (row) row.classList.toggle('is-checked', !was);
   if (chk) { chk.classList.toggle('is-checked', !was); chk.textContent = !was ? '✓' : ''; }
-};
-
-window.clearCheckedShopItems = () => {
-  checkedShopIds.clear();
-  renderShopping();
-};
+}
 
 // ================================================================
 // HELPERS
@@ -872,8 +727,8 @@ window.clearCheckedShopItems = () => {
 function updateCategoryDatalist() {
   const cats  = [...new Set(pantry.map(p => p.category))].sort();
   const names = [...new Set(pantry.map(p => p.name))].sort();
-  const dl    = document.getElementById('category-datalist');
-  const nl    = document.getElementById('category-names-list');
+  const dl = document.getElementById('category-datalist');
+  const nl = document.getElementById('category-names-list');
   if (dl) dl.innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
   if (nl) nl.innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
 }
@@ -882,9 +737,9 @@ function updateSubtitle() {
   const el = document.getElementById('inv-subtitle');
   if (!el) return;
   const total = pantry.length;
-  const low   = pantry.filter(p => { const q = p.qty ?? 0; return q > 0 && q <= (p.threshold ?? DEFAULT_LOW_THRESHOLD); }).length;
-  const out   = pantry.filter(p => (p.qty ?? 0) <= 0).length;
-  el.textContent = `${total} item${total !== 1 ? 's' : ''}${out > 0 ? ` · ${out} out` : ''}${low > 0 ? ` · ${low} low` : ''}`;
+  const out   = pantry.filter(p => (p.qty??0) <= 0).length;
+  const low   = pantry.filter(p => { const q=p.qty??0; return q>0 && q<=(p.threshold??DEFAULT_LOW_THRESHOLD); }).length;
+  el.textContent = `${total} item${total!==1?'s':''}${out>0?` · ${out} out`:''}${low>0?` · ${low} low`:''}`;
 }
 
 function setSyncIndicator(msg) {
@@ -892,49 +747,44 @@ function setSyncIndicator(msg) {
   if (el) el.textContent = msg === 'Synced' ? '✓ Cloud synced' : msg;
 }
 
-window.showStatus = (type, msg) => {
+function showStatus(type, msg) {
   const bar = document.getElementById('scan-status');
   if (!bar) return;
   bar.className = 'status-bar ' + type;
   bar.textContent = msg;
   bar.style.display = 'block';
   if (type === 'success') setTimeout(() => { bar.style.display = 'none'; }, 5000);
-};
+}
 
 function showProcessing(show, msg) {
   document.getElementById('processing-overlay').classList.toggle('show', show);
-  if (msg) document.getElementById('processing-msg').textContent = msg;
+  if (msg) showProcessingMsg(msg);
 }
 function showProcessingMsg(msg) {
   const el = document.getElementById('processing-msg');
   if (el) el.textContent = msg;
 }
 
-let toastTimer;
+let _toastTimer;
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-function formatQty(n) {
-  n = n ?? 0;
-  return n % 1 === 0 ? String(n) : n.toFixed(1);
+// ---- micro-utilities ----
+function on(id, event, fn) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, fn);
+  else console.warn(`[pantry] #${id} not found for event "${event}"`);
 }
-
-function esc(str) {
-  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function hide(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
 }
-
-function slugify(str) {
-  return String(str).toLowerCase().replace(/[^a-z0-9]/g, '-');
-}
-
-// Enter key shortcut for auth forms
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter') return;
-  if (document.getElementById('auth-login').classList.contains('active'))    handleLogin();
-  if (document.getElementById('auth-register').classList.contains('active')) handleRegister();
-});
+function val(id) { return document.getElementById(id)?.value?.trim() || ''; }
+function formatQty(n) { n = n ?? 0; return n % 1 === 0 ? String(n) : n.toFixed(1); }
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g,'-'); }
