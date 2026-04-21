@@ -46,10 +46,10 @@ const firebaseConfig = {
   appId:             "1:323355056685:web:41661b5d6b8da54fe4f6a4"
 };
 
-// OCR & AI: Using Google Gemini (gemini-1.5-flash) via REST — reliable vision support
-// Key is for Gemini only (receipt parsing). Swap key here if needed.
+// OCR & AI: Gemini 2.0 Flash via REST — multimodal (images + PDF)
+// Swap key/model here if needed.
 const GEMINI_API_KEY  = "AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8";
-const GEMINI_MODEL    = "gemini-1.5-flash";  // gemini-1.5-flash has full image support
+const GEMINI_MODEL    = "gemini-2.0-flash";  // stable multimodal model
 
 // [THRESHOLDS] — default "low" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
@@ -246,7 +246,7 @@ window.showTab = (tab, btn) => {
 };
 
 // ================================================================
-// FILE / RECEIPT HANDLING
+// FILE / RECEIPT HANDLING — images, PDFs, and live camera
 // ================================================================
 window.dragOver = (e) => { e.preventDefault(); document.getElementById('scan-zone').classList.add('drag-over'); };
 window.dragLeave = ()  => { document.getElementById('scan-zone').classList.remove('drag-over'); };
@@ -254,7 +254,7 @@ window.dropFile  = (e) => {
   e.preventDefault();
   document.getElementById('scan-zone').classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processReceiptFile(file);
+  if (file) processReceiptFile(file);
 };
 window.handleFileSelect = (e) => {
   const file = e.target.files[0];
@@ -266,24 +266,82 @@ window.clearPreview = () => {
   document.getElementById('scan-preview-img').src = '';
 };
 
-async function processReceiptFile(file) {
-  // Show preview
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    document.getElementById('scan-preview-img').src = e.target.result;
-    document.getElementById('scan-preview-wrap').style.display = 'block';
-  };
-  reader.readAsDataURL(file);
+// ---- CAMERA ----
+let cameraStream = null;
 
-  showStatus('info', 'Reading receipt…');
-  showProcessing(true, 'Uploading image…');
+window.openCamera = async () => {
+  // On mobile, prefer the native capture input (simpler UX)
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (isMobile) {
+    document.getElementById('camera-file').click();
+    return;
+  }
+  // Desktop: open in-page live camera view
+  const view = document.getElementById('camera-view');
+  const video = document.getElementById('camera-video');
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = cameraStream;
+    view.style.display = 'block';
+  } catch (err) {
+    // Permission denied or no camera — fall back to file picker
+    toast('Camera not available, using file picker');
+    document.getElementById('camera-file').click();
+  }
+};
+
+window.closeCameraView = () => {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  document.getElementById('camera-view').style.display = 'none';
+};
+
+window.captureFromCamera = () => {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  closeCameraView();
+  canvas.toBlob((blob) => {
+    const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+    processReceiptFile(file);
+  }, 'image/jpeg', 0.92);
+};
+
+// ---- PROCESS FILE ----
+async function processReceiptFile(file) {
+  const isPDF = file.type === 'application/pdf';
+
+  // Show preview (image only — PDFs get a placeholder)
+  const previewWrap = document.getElementById('scan-preview-wrap');
+  const previewImg  = document.getElementById('scan-preview-img');
+  if (isPDF) {
+    previewImg.src = 'data:image/svg+xml,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120">
+        <rect width="200" height="120" fill="#1A1814"/>
+        <text x="100" y="55" font-family="sans-serif" font-size="28" fill="#C8954A" text-anchor="middle">📄</text>
+        <text x="100" y="82" font-family="sans-serif" font-size="13" fill="#9A8F82" text-anchor="middle">PDF receipt</text>
+      </svg>`);
+    previewWrap.style.display = 'block';
+  } else {
+    const reader = new FileReader();
+    reader.onload = (e) => { previewImg.src = e.target.result; previewWrap.style.display = 'block'; };
+    reader.readAsDataURL(file);
+  }
+
+  showStatus('info', isPDF ? 'Reading PDF…' : 'Reading image…');
+  showProcessing(true, 'Preparing file…');
 
   try {
-    const base64  = await fileToBase64(file);
-    const mime    = file.type || 'image/jpeg';
-    showProcessingMsg('Parsing items with Gemini…');
-    const items   = await extractItemsGemini(base64, mime);
+    const base64 = await fileToBase64(file);
+    const mime   = file.type || (isPDF ? 'application/pdf' : 'image/jpeg');
+    showProcessingMsg('Parsing items with Gemini 2.0…');
+    const items  = await extractItemsGemini(base64, mime);
     showProcessing(false);
+    if (items.length === 0) {
+      showStatus('error', '✕ No grocery items found — try a clearer photo');
+      return;
+    }
     showStatus('success', `✓ Found ${items.length} item${items.length !== 1 ? 's' : ''}`);
     reviewItems = matchItemsToPantry(items);
     renderReview();
@@ -304,27 +362,29 @@ function fileToBase64(file) {
 }
 
 // ================================================================
-// [AI] — Receipt parsing via Gemini 1.5 Flash (REST)
+// [AI] — Receipt parsing via Gemini 2.0 Flash (REST, v1beta)
+// Supports JPG/PNG/HEIC images AND PDF receipts natively
 // ================================================================
 async function extractItemsGemini(base64, mimeType) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
-  const prompt = `You are a grocery receipt parser. Analyze this receipt image and extract all food/grocery line items.
+  const prompt = `You are a grocery receipt parser. Look at this receipt (image or PDF) and extract every food/grocery line item.
 
-Return ONLY a raw JSON array (no markdown fences, no explanation). Each element must have:
+Return ONLY a raw JSON array — no markdown fences, no preamble, no explanation. Each element:
 {
-  "name": "clean common item name (e.g. 'Orange Juice' not 'TROP PURE PREM 52OZ')",
-  "qty": <number, quantity purchased, default 1 if unclear>,
-  "unit": "<unit string e.g. 'box','can','lb','oz','carton','bag','bottle' — empty string if just a count>"
+  "name": "clean readable name (e.g. 'Orange Juice' not 'TROP PURE PREM OJ FL 52OZ')",
+  "qty": <number — quantity purchased, default 1 if unclear>,
+  "unit": "<unit: box, can, lb, oz, carton, bag, bottle, gallon, pack — empty string if just a count>"
 }
 
 Rules:
-- Skip taxes, fees, totals, subtotals, store name, phone numbers, dates
-- Normalize product names to readable English (no all-caps abbreviations)
-- If "2 @ $x.xx" style, qty = 2
+- SKIP taxes, fees, totals, subtotals, store info, phone, dates, cashier lines
+- Normalize ALL-CAPS abbreviated names to proper English
+- If "2 @ $x.xx" appears, qty = 2
+- Combine multi-line items that refer to the same product
 - Default qty = 1 when unclear
 
-Return ONLY the JSON array, nothing else.`;
+Return ONLY the JSON array.`;
 
   const body = {
     contents: [{
@@ -349,9 +409,11 @@ Return ONLY the JSON array, nothing else.`;
 
   const data = await resp.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  // Strip any accidental markdown fences
   const clean = text.replace(/```json|```/gi, '').trim();
 
-  // Attempt to extract JSON array if there's surrounding text
+  // Robustly extract JSON array
   const match = clean.match(/\[[\s\S]*\]/);
   const jsonStr = match ? match[0] : clean;
 
@@ -360,7 +422,8 @@ Return ONLY the JSON array, nothing else.`;
     if (!Array.isArray(parsed)) throw new Error('Not an array');
     return parsed.filter(i => i.name && String(i.name).trim().length > 0);
   } catch {
-    throw new Error('AI returned an unexpected format. Try a clearer photo.');
+    console.error('Raw AI response:', text);
+    throw new Error('AI returned unexpected format — try a clearer photo or better-lit receipt');
   }
 }
 
