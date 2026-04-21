@@ -28,7 +28,7 @@ const firebaseConfig = {
 // PDF: pdf.js (in-browser, no key)
 // AI parsing: Gemini text-only (very few tokens per receipt)
 const GEMINI_API_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL   = 'gemini-2.5-flash-lite-preview-06-17';
+const GEMINI_MODEL   = 'gemini-2.5-flash-lite';
 
 // [THRESHOLDS] — default "low stock" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
