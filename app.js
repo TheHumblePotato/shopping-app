@@ -16,7 +16,7 @@ import { getFirestore, collection, doc, addDoc, updateDoc,
 // [CONFIG] — swap keys / models here
 // ================================================================
 const firebaseConfig = {
-  apiKey:            "AIzaSyBs4yuMJEOhVOZw8E_Ghnn7Y_jtsYxei38",
+  apiKey:            "AIzaSyBjZ_r8z5bCg5ay51Grr2M7pVNLWmjQQnc",
   authDomain:        "shop-list-web-app.firebaseapp.com",
   projectId:         "shop-list-web-app",
   storageBucket:     "shop-list-web-app.firebasestorage.app",
