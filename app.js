@@ -16,7 +16,7 @@ import { getFirestore, collection, doc, addDoc, updateDoc,
 // [CONFIG] — swap keys / models here
 // ================================================================
 const firebaseConfig = {
-  apiKey:            "AIzaSyBjZ_r8z5bCg5ay51Grr2M7pVNLWmjQQnc",
+  apiKey:            "AIzaSyBs4yuMJEOhVOZw8E_Ghnn7Y_jtsYxei38",
   authDomain:        "shop-list-web-app.firebaseapp.com",
   projectId:         "shop-list-web-app",
   storageBucket:     "shop-list-web-app.firebasestorage.app",
@@ -24,11 +24,13 @@ const firebaseConfig = {
   appId:             "1:323355056685:web:41661b5d6b8da54fe4f6a4"
 };
 
-// OCR: Tesseract.js (runs in-browser, zero keys, zero quota)
+// OCR: Tesseract.js (runs in-browser, zero keys, no quota)
 // PDF: pdf.js (in-browser, no key)
-// AI parsing: Gemini text-only (very few tokens per receipt)
+// AI parsing: Gemini called directly from browser
+// NOTE: Set a quota cap on this key in Google AI Studio (aistudio.google.com)
+// and restrict it to your domain — that limits abuse even if the key is seen.
 const GEMINI_API_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL   = 'gemini-2.5-flash-lite';
+const GEMINI_MODEL   = 'gemini-2.5-flash-lite-preview-06-17';
 
 // [THRESHOLDS] — default "low stock" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
@@ -447,36 +449,52 @@ function loadScript(src) {
 }
 
 // ================================================================
-// AI PARSING — Gemini (text-only, minimal tokens)
+// ================================================================
+// ================================================================
+// AI PARSING — Gemini REST API (text-only, minimal tokens per call)
 // ================================================================
 async function parseReceiptTextWithGemini(rawText) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
   const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
-Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty>"}
-Skip: taxes, totals, fees, store info, dates. Fix ALL-CAPS abbreviations. Default qty=1.
+Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
+Rules:
+- Skip taxes, totals, fees, store name, phone, dates, cashier lines
+- Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" to "Orange Juice")
+- If quantity shown (e.g. "2 @ $1.99") set qty = 2. Default qty = 1 if unclear.
+- unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string
+- Return ONLY the JSON array, nothing else
 
-Receipt:
+Receipt text:
 ${rawText.slice(0, 4000)}`;
 
   const resp = await fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 2048 } })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+    })
   });
+
   if (!resp.ok) {
     const e = await resp.json().catch(() => ({}));
     throw new Error(e?.error?.message || `Gemini error ${resp.status}`);
   }
-  const data = await resp.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const match = text.replace(/```json|```/gi, '').trim().match(/\[[\s\S]*\]/);
+
+  const data  = await resp.json();
+  const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const clean = text.replace(/```json|```/gi, '').trim();
+  const match = clean.match(/\[\s\S]*\]/);
   try {
-    const parsed = JSON.parse(match ? match[0] : text);
+    const parsed = JSON.parse(match ? match[0] : clean);
     if (!Array.isArray(parsed)) throw new Error();
     return parsed.filter(i => i.name?.trim());
-  } catch { throw new Error('AI returned unexpected format — try a clearer photo'); }
+  } catch {
+    console.error('Gemini raw response:', text);
+    throw new Error('AI returned unexpected format — try a clearer photo');
+  }
 }
 
-// ================================================================
 // [MATCHING] — Category matching logic
 // ================================================================
 function matchItemsToPantry(rawItems) {
