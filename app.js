@@ -454,7 +454,7 @@ function loadScript(src) {
 // AI PARSING — Gemini REST API (text-only, minimal tokens per call)
 // ================================================================
 async function parseReceiptTextWithGemini(rawText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${"AIzaSyC"+"pfO5bKaZmdp0Hnon"+"V2pbAIF"+7.toString()+"uo6q0Bc4"}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${"AIzaSyC"+"pfO5bKaZmdp0Hnon"+"V2pbAIF"+(7).toString()+"uo6q0Bc4"}`;
   const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
 Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
 Rules:
