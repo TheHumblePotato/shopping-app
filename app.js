@@ -458,7 +458,8 @@ async function parseReceiptTextWithGemini(rawText) {
   const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
 Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
 Rules:
-- Skip taxes, totals, fees, store name, phone, dates, cashier lines
+- Skip taxes, totals, fees, store name, phone, dates, cashier lines. Also skip items that arent food e.g. "Plastic Bag" or "Gift Card".
+- Name categories in a good balance between too detailed and too general. You can merge different items/brands together if they are similar enough. E.g. different types of ice cream under just "Ice Cream"
 - Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" to "Orange Juice")
 - If quantity shown (e.g. "2 @ $1.99") set qty = 2. Default qty = 1 if unclear.
 - unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string
