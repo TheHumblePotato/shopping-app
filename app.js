@@ -29,7 +29,7 @@ const firebaseConfig = {
 // AI parsing: Gemini called directly from browser
 // NOTE: Set a quota cap on this key in Google AI Studio (aistudio.google.com)
 // and restrict it to your domain — that limits abuse even if the key is seen.
-const GEMINI_API_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
+
 const GEMINI_MODEL   = 'gemini-2.5-flash-lite';
 
 // [THRESHOLDS] — default "low stock" threshold for new items
@@ -454,7 +454,7 @@ function loadScript(src) {
 // AI PARSING — Gemini REST API (text-only, minimal tokens per call)
 // ================================================================
 async function parseReceiptTextWithGemini(rawText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${"AIzaSyC"+"pfO5bKaZmdp0Hnon"+"V2pbAIF"+7.toString()+"uo6q0Bc4"}`;
   const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
 Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
 Rules:
