@@ -30,7 +30,7 @@ const firebaseConfig = {
 // NOTE: Set a quota cap on this key in Google AI Studio (aistudio.google.com)
 // and restrict it to your domain — that limits abuse even if the key is seen.
 const GEMINI_API_KEY = 'AIzaSyBXg8ZoQObwPshU1f3NFRu3JFQkuefTaU8';
-const GEMINI_MODEL   = 'gemini-2.5-flash-lite-preview-06-17';
+const GEMINI_MODEL   = 'gemini-2.5-flash-lite';
 
 // [THRESHOLDS] — default "low stock" threshold for new items
 const DEFAULT_LOW_THRESHOLD = 1;
