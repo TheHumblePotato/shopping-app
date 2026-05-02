@@ -110,15 +110,17 @@ input, select, button { font-family: var(--font-body); }
   z-index: 1;
 }
 
-.auth-logo { text-align: center; margin-bottom: 32px; }
+.auth-logo { text-align: center; margin-bottom: 28px; }
 
-/* Logo image in auth card */
+/* Logo image in auth card — large, prominent */
 .logo-img {
-  width: 160px;
-  height: 160px;
+  width: 220px;
+  height: 220px;
   object-fit: contain;
   display: block;
-  margin: 0 auto 8px;
+  margin: -8px auto 4px;
+  /* Slight drop shadow so it pops off the dark card */
+  filter: drop-shadow(0 4px 24px rgba(200,149,74,0.18));
 }
 
 /* Fallback text logo (hidden when image loads) */
@@ -299,21 +301,25 @@ input, select, button { font-family: var(--font-body); }
   flex-shrink: 0;
 }
 
-/* Nav icon */
+/* Nav icon — only shown on mobile when full logo is hidden */
 .nav-logo-icon {
   width: 28px;
   height: 28px;
   object-fit: contain;
+  display: none;
+}
+
+/* Full logo.png in nav — constrained to nav height */
+.nav-logo-img {
+  height: 36px;
+  width: auto;
+  object-fit: contain;
   display: block;
 }
 
-/* CUSTOMIZABLE: Nav logo text */
+/* Text label — hidden, logo image replaces it */
 .nav-logo {
-  font-family: var(--font-display);
-  font-size: 1.45rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
+  display: none;
 }
 
 .nav-tabs {
@@ -1003,6 +1009,15 @@ input, select, button { font-family: var(--font-body); }
   padding: 64px 20px;
   color: var(--text-secondary);
 }
+.empty-state-logo {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 18px;
+  opacity: 0.45;
+  filter: drop-shadow(0 2px 12px rgba(200,149,74,0.1));
+}
 .empty-state-icon { font-size: 2.5rem; margin-bottom: 14px; }
 .empty-state h3 {
   font-family: var(--font-display);
@@ -1013,12 +1028,24 @@ input, select, button { font-family: var(--font-body); }
 }
 .empty-state p { font-size: 0.85rem; }
 
+/* Processing overlay logo */
+.processing-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 20px;
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 12px rgba(200,149,74,0.25));
+}
+
 /* ================================================================
    RESPONSIVE
    ================================================================ */
 @media (max-width: 640px) {
   .auth-card { padding: 32px 24px; }
-  .nav-logo { display: none; }
+  .logo-img { width: 180px; height: 180px; }
+  .nav-logo-img { display: none; }
   .nav-logo-icon { display: block; }
   .nav-tabs { max-width: 260px; }
   .tab-label { display: none; }

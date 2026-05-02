@@ -604,7 +604,7 @@ function renderInventory() {
   if (!grid) return;
 
   if (!pantry.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🥫</div><h3>Your pantry is empty</h3><p>Scan a receipt or add items manually</p></div>`;
+    grid.innerHTML = `<div class="empty-state"><img src="logo.png" alt="MunchSnap" class="empty-state-logo"><h3>Your pantry is empty</h3><p>Scan a receipt or add items manually</p></div>`;
     updateSubtitle(); return;
   }
 

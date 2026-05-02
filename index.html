@@ -75,8 +75,9 @@
   <div id="app" style="display:none">
     <nav class="nav">
       <div class="nav-left">
+        <!-- Full logo on desktop, icon on mobile (CSS swaps them) -->
+        <img src="logo.png" alt="MunchSnap" class="nav-logo-img">
         <img src="icon.png" alt="MunchSnap" class="nav-logo-icon">
-        <span class="nav-logo">MunchSnap</span>
       </div>
       <div class="nav-tabs">
         <button class="nav-tab active" data-tab="scan"      id="tab-btn-scan">      <span class="tab-icon">⟳</span><span class="tab-label">Scan</span></button>
@@ -249,6 +250,7 @@
   <!-- PROCESSING OVERLAY -->
   <div class="processing-overlay" id="processing-overlay">
     <div class="processing-card">
+      <img src="logo.png" alt="MunchSnap" class="processing-logo">
       <div class="spinner-ring"></div>
       <h3 class="processing-title">Scanning Receipt</h3>
       <p class="processing-msg" id="processing-msg">Extracting text…</p>
