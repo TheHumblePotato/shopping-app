@@ -1,5 +1,5 @@
 // ================================================================
-// PANTRY APP — app.js
+// MUNCHSNAP APP — app.js
 // All event wiring uses addEventListener, no inline onclick handlers.
 // ================================================================
 
@@ -449,22 +449,35 @@ function loadScript(src) {
 }
 
 // ================================================================
-// ================================================================
-// ================================================================
-// AI PARSING — Gemini REST API (text-only, minimal tokens per call)
+// AI PARSING — Gemini REST API
+// Passes existing pantry items + categories so Gemini can deduplicate
+// and match names exactly (e.g. won't create "M&M's Peanut Butter"
+// separately from the existing "M&Ms Peanut Butter").
 // ================================================================
 async function parseReceiptTextWithGemini(rawText) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${"AIzaSyC"+"pfO5bKaZmdp0Hnon"+"V2pbAIF"+(7).toString()+"uo6q0Bc4"}`;
+
+  // Build a compact pantry context: list of existing item names + categories
+  // This lets Gemini normalise receipt text to match names already in the pantry
+  // (e.g. treat "M&M'S PNT BTR" and "M&Ms Peanut Butter" as the same item).
+  const existingItems      = pantry.map(p => p.name).filter(Boolean);
+  const existingCategories = [...new Set(pantry.map(p => p.category).filter(Boolean))];
+
+  const pantryContext = (existingItems.length || existingCategories.length)
+    ? `\nEXISTING PANTRY ITEMS (use these EXACT names when the receipt item clearly matches — normalise punctuation/caps differences like apostrophes, ampersands, spacing):\n${existingItems.slice(0, 200).join(', ')}\n\nEXISTING CATEGORIES (prefer these when assigning a category):\n${existingCategories.slice(0, 60).join(', ')}\n`
+    : '';
+
   const prompt = `Parse this grocery receipt OCR text. Return ONLY a raw JSON array, no markdown, no explanation.
 Each element: {"name":"clean readable name","qty":<number>,"unit":"<unit or empty string>"}
 Rules:
-- Skip taxes, totals, fees, store name, phone, dates, cashier lines. Also skip items that arent food e.g. "Plastic Bag" or "Gift Card".
-- Name categories in a good balance between too detailed and too general. You can merge different items/brands together if they are similar enough. E.g. different types of ice cream under just "Ice Cream"
-- Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" to "Orange Juice")
+- Skip taxes, totals, fees, store name, phone, dates, cashier lines. Also skip items that aren't food e.g. "Plastic Bag" or "Gift Card".
+- Name categories in a good balance between too detailed and too general. You can merge different items/brands together if they are similar enough. E.g. different types of ice cream under just "Ice Cream".
+- Fix ALL-CAPS abbreviations (e.g. "TROP PURE PREM OJ FL" → "Orange Juice").
+- CRITICAL — DEDUPLICATION: If an item on the receipt matches an existing pantry item (same product, minor punctuation/spelling differences like apostrophes, ampersands, accents, capitalisation), use the EXACT existing pantry item name. Do NOT create a near-duplicate.
 - If quantity shown (e.g. "2 @ $1.99") set qty = 2. Default qty = 1 if unclear.
-- unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string
-- Return ONLY the JSON array, nothing else
-
+- unit examples: box, can, lb, oz, bag, bottle, gallon, pack, carton — or empty string.
+- Return ONLY the JSON array, nothing else.
+${pantryContext}
 Receipt text:
 ${rawText.slice(0, 4000)}`;
 
@@ -485,7 +498,7 @@ ${rawText.slice(0, 4000)}`;
   const data  = await resp.json();
   const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const clean = text.replace(/```json|```/gi, '').trim();
-  const match = clean.match(/\[\s\S]*\]/);
+  const match = clean.match(/\[[\s\S]*\]/);
   try {
     const parsed = JSON.parse(match ? match[0] : clean);
     if (!Array.isArray(parsed)) throw new Error();
@@ -496,6 +509,7 @@ ${rawText.slice(0, 4000)}`;
   }
 }
 
+// ================================================================
 // [MATCHING] — Category matching logic
 // ================================================================
 function matchItemsToPantry(rawItems) {
@@ -797,7 +811,7 @@ function toast(msg) {
 function on(id, event, fn) {
   const el = document.getElementById(id);
   if (el) el.addEventListener(event, fn);
-  else console.warn(`[pantry] #${id} not found for event "${event}"`);
+  else console.warn(`[munchsnap] #${id} not found for event "${event}"`);
 }
 function hide(id) {
   const el = document.getElementById(id);

@@ -1,5 +1,5 @@
 /* ================================================================
-   PANTRY APP — styles.css
+   MUNCHSNAP APP — styles.css
    ================================================================
    CUSTOMIZATION GUIDE:
    - Section [BRAND]   → colors, fonts, border-radius
@@ -112,7 +112,16 @@ input, select, button { font-family: var(--font-body); }
 
 .auth-logo { text-align: center; margin-bottom: 32px; }
 
-/* CUSTOMIZABLE: Auth logo text */
+/* Logo image in auth card */
+.logo-img {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 8px;
+}
+
+/* Fallback text logo (hidden when image loads) */
 .logo-text {
   font-family: var(--font-display);
   font-size: 2.8rem;
@@ -283,14 +292,28 @@ input, select, button { font-family: var(--font-body); }
   gap: 0;
 }
 
-/* CUSTOMIZABLE: Nav logo */
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Nav icon */
+.nav-logo-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+}
+
+/* CUSTOMIZABLE: Nav logo text */
 .nav-logo {
   font-family: var(--font-display);
   font-size: 1.45rem;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.3px;
-  flex-shrink: 0;
 }
 
 .nav-tabs {
@@ -996,6 +1019,7 @@ input, select, button { font-family: var(--font-body); }
 @media (max-width: 640px) {
   .auth-card { padding: 32px 24px; }
   .nav-logo { display: none; }
+  .nav-logo-icon { display: block; }
   .nav-tabs { max-width: 260px; }
   .tab-label { display: none; }
   .nav-tab { padding: 6px 16px; }
