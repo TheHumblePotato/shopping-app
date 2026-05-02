@@ -311,8 +311,8 @@ input, select, button { font-family: var(--font-body); }
 
 /* Full logo.png in nav — constrained to nav height */
 .nav-logo-img {
-  height: 36px;
-  width: auto;
+  width: 140px;
+  height: auto;
   object-fit: contain;
   display: block;
 }
@@ -1044,7 +1044,7 @@ input, select, button { font-family: var(--font-body); }
    ================================================================ */
 @media (max-width: 640px) {
   .auth-card { padding: 32px 24px; }
-  .logo-img { width: 180px; height: 180px; }
+  .logo-img { width: 300px; height: auto; }
   .nav-logo-img { display: none; }
   .nav-logo-icon { display: block; }
   .nav-tabs { max-width: 260px; }
