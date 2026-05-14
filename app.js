@@ -80,8 +80,8 @@ function generateAvatarSVG(cfg = {}) {
   const hairPaths = {
     none:   '',
     short:  `<path d="M26,42 Q50,20 74,42 L74,46 Q50,28 26,46Z" fill="${c.hairColor}"/>`,
-    medium: `<path d="M24,44 Q50,18 76,44 L76,58 Q74,62 50,64 Q26,62 24,58Z" fill="${c.hairColor}"/>`,
-    long:   `<path d="M24,44 Q50,18 76,44 L80,80 Q74,88 50,90 Q26,88 20,80Z" fill="${c.hairColor}"/>`,
+    medium: `<path d="M22,42 Q50,16 78,42 L78,66 Q76,70 50,76 Q24,70 22,66Z" fill="${c.hairColor}"/>`,
+    long:   `<path d="M20,40 Q50,12 80,40 L80,86 Q78,94 50,98 Q22,94 20,86Z" fill="${c.hairColor}"/>`,
     curly:  `<circle cx="30" cy="38" r="11" fill="${c.hairColor}"/><circle cx="50" cy="24" r="14" fill="${c.hairColor}"/><circle cx="70" cy="38" r="11" fill="${c.hairColor}"/>`,
     bun:    `<path d="M26,46 Q50,22 74,46" fill="${c.hairColor}"/><ellipse cx="50" cy="22" rx="14" ry="12" fill="${c.hairColor}"/>`,
   };
@@ -1262,7 +1262,13 @@ async function sendMealChat() {
   mealChatHistory.push({ role: 'user', content: msg });
   renderMealChat();
   const chatHistory = document.getElementById('meal-chat-history');
-  if (chatHistory) { const typing = document.createElement('div'); typing.className = 'chat-msg ai-msg chat-typing'; typing.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>'; chatHistory.appendChild(typing); chatHistory.scrollTop = chatHistory.scrollHeight; }
+  if (chatHistory) {
+    const typing = document.createElement('div');
+    typing.className = 'chat-msg ai-msg chat-typing';
+    typing.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+    chatHistory.appendChild(typing);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+  }
   try {
     const resp = await fetch(getGeminiKey(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1274,19 +1280,58 @@ async function sendMealChat() {
     const data = await resp.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I couldn\'t process that.';
     mealChatHistory.push({ role: 'assistant', content: text });
-    // Try to parse updated meals
     const clean = text.replace(/```json|```/gi, '').trim();
     const match = clean.match(/\[[\s\S]*\]/);
-    if (match) { try { const parsed = JSON.parse(match[0]); if (Array.isArray(parsed) && parsed[0]?.name) { generatedMeals = parsed; expandedMealIdx.clear(); renderMealsGrid(); } } catch {} }
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        if (Array.isArray(parsed) && parsed[0]?.name) {
+          generatedMeals = parsed;
+          expandedMealIdx.clear();
+          renderMealsGrid();
+        }
+      } catch {}
+    }
     renderMealChat();
-  } catch (e) { mealChatHistory.push({ role: 'assistant', content: 'Sorry, something went wrong.' }); renderMealChat(); }
+  } catch (e) {
+    mealChatHistory.push({ role: 'assistant', content: 'Sorry, something went wrong.' });
+    renderMealChat();
+  }
+}
+
+function prettifyAIChat(content) {
+  const clean = content.replace(/```json|```/gi, '').trim();
+  const jsonMatch = clean.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  const candidate = jsonMatch ? jsonMatch[0] : clean;
+  try {
+    const parsed = JSON.parse(candidate);
+    if (Array.isArray(parsed)) {
+      const summary = parsed.map((meal, idx) => {
+        const name = meal.name || `Meal ${idx + 1}`;
+        const desc = meal.description || 'No description available.';
+        const tags = Array.isArray(meal.tags) ? `Tags: ${meal.tags.join(', ')}` : '';
+        const times = [`Prep: ${meal.prepTime ?? '?'}m`, `Cook: ${meal.cookTime ?? '?'}m`].join(' · ');
+        return `<strong>${esc(name)}</strong><br>${esc(desc)}${tags ? `<br><em>${esc(tags)}</em>` : ''}<br><span style="opacity:.8">${esc(times)}</span>`;
+      });
+      return `Here are the updated meal ideas:<br><br>${summary.join('<br><br>')}`;
+    }
+    if (parsed && typeof parsed === 'object') {
+      const keys = Object.keys(parsed).slice(0, 5);
+      const lines = keys.map(k => `${k}: ${JSON.stringify(parsed[k])}`);
+      return `I received structured data:<br>${lines.map(l => esc(l)).join('<br>')}`;
+    }
+  } catch (err) {
+    // Not JSON, fall back to plain text
+  }
+  return esc(content).replace(/\n/g, '<br>');
 }
 
 function renderMealChat() {
   const el = document.getElementById('meal-chat-history'); if (!el) return;
   el.innerHTML = mealChatHistory.filter(m => m.role === 'user' || m.role === 'assistant').map((m, i) => {
     if (i === 0) return ''; // skip the initial system prompt
-    return `<div class="chat-msg ${m.role === 'user' ? 'user-msg' : 'ai-msg'}">${esc(m.content).replace(/\n/g, '<br>')}</div>`;
+    const message = m.role === 'assistant' ? prettifyAIChat(m.content) : esc(m.content).replace(/\n/g, '<br>');
+    return `<div class="chat-msg ${m.role === 'user' ? 'user-msg' : 'ai-msg'}">${message}</div>`;
   }).join('');
   el.scrollTop = el.scrollHeight;
 }

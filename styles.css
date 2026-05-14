@@ -159,8 +159,9 @@ input, select, button, textarea { font-family: var(--font-body); }
 .auth-card {
   border-radius: 24px;
   padding: 48px 44px;
-  width: 100%;
+  width: min(100%, 440px);
   max-width: 440px;
+  margin: auto;
   position: relative;
   z-index: 1;
   animation: cardIn 0.5s var(--ease-back);
@@ -347,7 +348,6 @@ textarea.field-input { resize: vertical; min-height: 80px; }
 .plan-duration { font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 16px; }
 .plan-features { list-style: none; text-align: left; margin-bottom: 20px; }
 .plan-features li { font-size: 0.82rem; color: var(--text-secondary); padding: 4px 0; }
-.plan-features li::first-letter { }
 .plan-btn { width: 100%; font-size: 0.84rem; padding: 10px; }
 .sub-later { width: 100%; margin-top: 8px; font-size: 0.82rem; color: var(--text-tertiary); }
 
@@ -400,7 +400,6 @@ textarea.field-input { resize: vertical; min-height: 80px; }
 /* ── Recipe modal ── */
 .recipe-modal-card { max-width: 580px; max-height: 90vh; overflow-y: auto; }
 .recipe-modal-title { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; margin-bottom: 24px; }
-.recipe-form-scroll { }
 .recipe-emoji-row { display: flex; gap: 12px; align-items: flex-start; }
 .recipe-row-2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .recipe-textarea { min-height: 100px; line-height: 1.5; }
@@ -437,7 +436,6 @@ textarea.field-input { resize: vertical; min-height: 80px; }
 .friends-searching { color: var(--text-secondary); font-size: 0.84rem; }
 .friend-search-results { margin-bottom: 20px; }
 .friends-close { width: 100%; margin-top: 8px; }
-.pending-list, .friends-list { }
 
 /* ── Signup prompt ── */
 .signup-prompt-card { max-width: 380px; text-align: center; }
@@ -730,7 +728,6 @@ textarea.field-input { resize: vertical; min-height: 80px; }
   margin-bottom: 32px;
 }
 .meals-prefs-grid { display: flex; flex-direction: column; gap: 20px; }
-.meals-pref-section { }
 .meals-pref-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-secondary); margin-bottom: 10px; }
 .meal-type-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .meal-type-btn {
@@ -796,7 +793,6 @@ textarea.field-input { resize: vertical; min-height: 80px; }
 .ingredient-list li:last-child { border-bottom: none; }
 .have-it { color: var(--text-primary); }
 .need-it { color: var(--text-secondary); }
-.have-it::first-letter, .need-it::first-letter { }
 .step-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .step-list li { font-size: 0.83rem; color: var(--text-secondary); display: flex; gap: 10px; line-height: 1.5; }
 .step-num { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(200,149,74,0.3); border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
@@ -873,7 +869,7 @@ textarea.field-input { resize: vertical; min-height: 80px; }
   transition: color 0.15s; padding: 5px 8px; border-radius: var(--radius-sm);
 }
 .recipe-like-btn:hover, .recipe-comment-toggle:hover { color: var(--text-primary); background: var(--surface-2); }
-.recipe-like-btn.liked { color: #e05); }
+.recipe-like-btn.liked { color: #e05; }
 .recipe-like-btn.liked span { color: var(--red); }
 
 .recipe-comments-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); animation: tabIn 0.2s var(--ease); }
